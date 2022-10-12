@@ -99,6 +99,9 @@ apt_install () {
   if ! pip install Adafruit_DHT; then
     message "Unable to install pip 'Adafruit_DHT'." "WARNING"
   fi
+  if ! pip install python-crontab; then
+    message "Unable to install pip 'Adafruit_DHT'." "WARNING"
+  fi
 }
 
 # takes a package ($1) as arg
@@ -221,8 +224,8 @@ if ! systemctl enable grafana-server.service; then
   message "Unable to start service 'grafana-server.service'." "WARNING"
 fi
 message "Enable read_temp.py in crontab" "INFO"
-if ! crontab -l | { cat; echo "0,5,10,15,20,25,30,35,40,45,50,55   *    *    *    *  python /home/pi/lcd/read_temp.py"; } | crontab -; then
-  message "Unable to set crontab 'read_temp.py'." "WARNING"
+if ! python crontab.py; then
+  message "Unable to set crontab." "WARNING"
 fi
 
 message "Enabling I2C on boot." 'INFO'; i2c_boot_config
