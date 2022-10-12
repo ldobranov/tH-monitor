@@ -69,6 +69,10 @@ apt_install () {
   if ! apt install python3-pip -y; then
     message "Unable to install pkg 'python3-pip'." "WARNING"
   fi
+  message "Installing the 'libgpiod2' pkg." "INFO"
+  if ! apt install libgpiod2 -y; then
+    message "Unable to install pkg 'libgpiod2'." "WARNING"
+  fi
   message "Installing the 'influxdb' and 'influxdb-client' pkg." "INFO"
   if ! apt install influxdb -y; then
     message "Unable to install pkg 'influxdb'." "WARNING"
