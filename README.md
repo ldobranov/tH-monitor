@@ -53,7 +53,7 @@ This repository contains all the code for interfacing with a **16x2 character I2
   ```
   influx -username admin -password pass
   ```
--  We create the temperature database with following query and exit the cli:
+- We create the temperature database with following query and exit the cli:
   ```
   CREATE DATABASE "temperature"
   quit
