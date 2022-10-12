@@ -1,5 +1,5 @@
 # Temperature and humidity monitor
-This repository contains all the code for interfacing with a **16x2 I2C LCD)** and **DHT11, DHT22** sensors also **InfluDB** and **Grafna**
+This repository contains all the code for interfacing with a **16x2 I2C LCD**, **DHT11, DHT22** sensors, **InfluDB** and **Grafna**
 
 # Installation
 - Install git
