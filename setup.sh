@@ -39,6 +39,14 @@ message () {
 }
 
 apt_install () {
+  message "Setup influx respiritory." "INFLUX"
+  if !  curl -sL https://repos.influxdata.com/influxdb.key | sudo apt-key add -
+        source /etc/os-release
+        test $VERSION_ID = "7" && echo "deb https://repos.influxdata.com/debian wheezy stable" | sudo tee /etc/apt/sources.list.d/influxdb.list
+        test $VERSION_ID = "8" && echo "deb https://repos.influxdata.com/debian jessie stable" | sudo tee /etc/apt/sources.list.d/influxdb.list
+        test $VERSION_ID = "9" && echo "deb https://repos.influxdata.com/debian stretch stable" | sudo tee /etc/apt/sources.list.d/influxdb.list; then
+    message "Unable to set influx." "WARNING"
+  fi
   if ! apt update; then
     message "Unable to update APT." "ERROR"
     end "Check your Internet connection and try again." 1
@@ -53,17 +61,32 @@ apt_install () {
   if ! apt install python-smbus -y; then
     message "Unable to install pkg 'python-smbus'." "WARNING"
   fi
-  if ! pip3 install adafruit-circuitpython-dht; then
-    message "Unable to install pip 'adafruit-circuitpython-dht'." "WARNING"
+  if ! apt install python3-smbus -y; then
+    message "Unable to install pkg 'python3-smbus'." "WARNING"
   fi
-  
+
   message "Installing the 'pip' pkg for Py3." "INFO"
   if ! apt install python3-pip -y; then
     message "Unable to install pkg 'python3-pip'." "WARNING"
   fi
-  if ! apt install python3-smbus -y; then
-    message "Unable to install pkg 'python3-smbus'." "WARNING"
+  message "Installing the 'influxdb' and 'influxdb-client' pkg." "INFO"
+  if ! apt install influxdb -y; then
+    message "Unable to install pkg 'influxdb'." "WARNING"
   fi
+  if ! apt install influxdb-client -y; then
+    message "Unable to install pkg 'influxdb-client'." "WARNING"
+  fi
+  if ! pip install influxdb; then
+    message "Unable to install pip 'influxdb'." "WARNING"
+  fi
+  if ! pip install adafruit-circuitpython-dht; then
+    message "Unable to install pip 'adafruit-circuitpython-dht'." "WARNING"
+  fi
+  if !  systemctl enable influxdb &&  systemctl start influxdb; then
+    message "Unable to enable and start influxdb" "WARNING"
+  fi
+}
+
 }
 
 # takes a package ($1) as arg
