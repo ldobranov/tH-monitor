@@ -87,8 +87,6 @@ apt_install () {
   fi
 }
 
-}
-
 # takes a package ($1) as arg
 dpkg_check_installed () {
   if dpkg -l "$1" > /dev/null 2>&1; then return 0; else return 1; fi
