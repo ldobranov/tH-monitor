@@ -17,21 +17,15 @@ This repository contains all the code for interfacing with a **16x2 I2C LCD**, *
   ```
   sudo ./install.sh
   ```
-
-- Finally we will need to automate the script by running it as a cronjob run the following command to open the cronjob editor:
-  ```
-  crontab -e
-  ```
-
-- Add the following line to the file to run the script exactly every 5 minutes:
-  ```
-  # m h  dom mon dow   command
-  0,5,10,15,20,25,30,35,40,45,50,55   *    *    *    *  python /home/pi/lcd/read_temp.py
-  ```
+  
 - To enable authentication, enter the influx cli with the command influx. Once we are in the influx cli, we need to enter the following query to create the admin account. In this step, you best replace pass in the query with one of your own choice. Keep in mind that we will be using these credentials for the rest of the project.
+  ```
+  influx
+  ```
   ```
   CREATE USER "admin" WITH PASSWORD 'pass' WITH ALL PRIVILEGES
   SHOW users
+  quit
   ```
 - In the following step we will create the database. To do this we need to enter the influx cli again, but this time we need to provide the credentials of the admin account:
   ```
