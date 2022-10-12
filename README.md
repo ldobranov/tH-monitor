@@ -4,7 +4,7 @@ This repository contains all the code for interfacing with a **16x2 I2C LCD**, *
 # Installation
 - Install git
   ```
-  sudo apt install git
+  sudo apt update && sudo apt install git
   ```
 
 - Clone the repo in your home directory
