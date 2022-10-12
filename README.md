@@ -1,4 +1,4 @@
-# LCD
+# Temperature and humidity monitor
 This repository contains all the code for interfacing with a **16x2 character I2C liquid-crystal display (LCD)** and DHT11,DHT22 sensors
 
 # Table of Contents
