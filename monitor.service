@@ -5,7 +5,7 @@ Description=Grow Monitor LCD
 
 Type=simple
 User=pi
-ExecStart=python /home/pi/lcd/monitor.py
+ExecStart=python /home/pi/tH-monitor/monitor.py
 Restart = on-failure
 RestartSec = 5
 TimeoutStartSec = infinity
