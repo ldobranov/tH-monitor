@@ -224,7 +224,7 @@ if ! systemctl enable grafana-server.service; then
   message "Unable to start service 'grafana-server.service'." "WARNING"
 fi
 message "Enable read_temp.py in crontab" "INFO"
-if ! python crontab.py; then
+if ! python cronmon.py; then
   message "Unable to set crontab." "WARNING"
 fi
 
