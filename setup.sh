@@ -193,6 +193,14 @@ if modules /etc/modprobe.d/raspi-blacklist.conf "$LCD_CONFIG_DIR"/raspi-blacklis
   message "Updated required modules in '/etc/modprobe.d/raspi-blacklist.conf.'" 'INFO'
 fi
 
+message "Setup LCD service" "INFO"
+if ! cp monitor.service /etc/systemd/system/; then
+  message "Unable to set service 'mointor.service'." "WARNING"
+fi
+if ! systemctl enable monitor.service; then
+  message "Unable to start service 'mointor.service'." "WARNING"
+fi
+
 message "Enabling I2C on boot." 'INFO'; i2c_boot_config
 
 echo "#################################################################"
