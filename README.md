@@ -69,17 +69,13 @@ This repository contains all the code for interfacing with a **16x2 character I2
 
 - At the end of the installation script, you'll be prompted to reboot the RPi to apply the changes made to `/boot/config.txt` and `/etc/modules`.
 
-- After rebooting, try one of the [**demos**](#demos):
+- After rebooting, go to grafan page:
   ```
-  ./home/${USER}/lcd/demo_clock.py
-  ```
-  or
-  ```
-  python /home/${USER}/lcd/demo_clock.py
+  http://localhost:3000/
   ```
   or
   ```
-  python3 /home/${USER}/lcd/demo_clock.py
+  http://<Raspberry Pi IP adres>:3000/
   ```
 
 [top :arrow_up:](#)
