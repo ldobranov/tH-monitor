@@ -53,6 +53,14 @@ apt_install () {
   if ! apt install python-smbus -y; then
     message "Unable to install pkg 'python-smbus'." "WARNING"
   fi
+  if ! pip3 install adafruit-circuitpython-dht; then
+    message "Unable to install pip 'adafruit-circuitpython-dht'." "WARNING"
+  fi
+  
+  message "Installing the 'pip' pkg for Py3." "INFO"
+  if ! apt install python3-pip -y; then
+    message "Unable to install pkg 'python3-pip'." "WARNING"
+  fi
   if ! apt install python3-smbus -y; then
     message "Unable to install pkg 'python3-smbus'." "WARNING"
   fi
