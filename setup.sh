@@ -212,6 +212,10 @@ fi
 if ! systemctl enable monitor.service; then
   message "Unable to start service 'mointor.service'." "WARNING"
 fi
+message "Enable grafana service" "INFO"
+if ! systemctl enable grafana-server.service; then
+  message "Unable to start service 'grafana-server.service'." "WARNING"
+fi
 
 message "Enabling I2C on boot." 'INFO'; i2c_boot_config
 
