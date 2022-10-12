@@ -1,0 +1,14 @@
+[Unit]
+Description=Grow Monitor LCD
+
+[Service]
+
+Type=simple
+User=pi
+ExecStart=python /home/pi/lcd/monitor.py
+Restart = on-failure
+RestartSec = 5
+TimeoutStartSec = infinity
+
+[Install]
+WantedBy=multi-user.target
