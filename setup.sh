@@ -65,10 +65,6 @@ apt_install () {
     message "Unable to install pkg 'python3-smbus'." "WARNING"
   fi
 
-  message "Installing the 'pip' pkg for Py3." "INFO"
-  if ! apt install python3-pip -y; then
-    message "Unable to install pkg 'python3-pip'." "WARNING"
-  fi
   message "Installing the 'libgpiod2' pkg." "INFO"
   if ! apt install libgpiod2 -y; then
     message "Unable to install pkg 'libgpiod2'." "WARNING"
@@ -79,6 +75,20 @@ apt_install () {
   fi
   if ! apt install influxdb-client -y; then
     message "Unable to install pkg 'influxdb-client'." "WARNING"
+  fi
+  message "Installing the 'grafana' pkg." "INFO"
+  if ! apt-get install -y adduser libfontconfig1; then
+    message "Unable to adduser 'libfontconfig1'." "WARNING"
+  fi
+  if ! wget https://dl.grafana.com/oss/release/grafana-rpi_8.1.8_armhf.deb; then
+    message "Unable to download 'grafana-rpi_8.1.8'." "WARNING"
+  fi
+  if ! dpkg -i grafana-rpi_8.1.8_armhf.deb; then
+    message "Unable to install 'grafana-rpi_8.1.8_armhf.deb'." "WARNING"
+  fi
+  message "Installing the 'pip' pkg for Py3." "INFO"
+  if ! apt install python3-pip -y; then
+    message "Unable to install pkg 'python3-pip'." "WARNING"
   fi
   if ! pip install influxdb; then
     message "Unable to install pip 'influxdb'." "WARNING"
