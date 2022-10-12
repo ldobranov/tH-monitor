@@ -26,7 +26,7 @@ This repository contains all the code for interfacing with a **16x2 character I2
 - Clone the repo in your home directory
   ```
   git clone https://github.com/ldobranov/tH-monitor.git
-  cd lcd/
+  cd tH-monitor/
   ```
 
 - Run the automatic installation script with `sudo` permission
