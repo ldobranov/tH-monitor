@@ -77,7 +77,7 @@ apt_install () {
     message "Unable to install pkg 'influxdb-client'." "WARNING"
   fi
   message "Installing the 'grafana' pkg." "INFO"
-  if ! apt-get install -y adduser libfontconfig1; then
+  if ! apt install -y adduser libfontconfig1; then
     message "Unable to adduser 'libfontconfig1'." "WARNING"
   fi
   if ! wget https://dl.grafana.com/oss/release/grafana-rpi_8.1.8_armhf.deb; then
@@ -96,8 +96,8 @@ apt_install () {
   if ! pip install adafruit-circuitpython-dht; then
     message "Unable to install pip 'adafruit-circuitpython-dht'." "WARNING"
   fi
-  if !  systemctl enable influxdb &&  systemctl start influxdb; then
-    message "Unable to enable and start influxdb" "WARNING"
+  if ! pip install Adafruit_DHT; then
+    message "Unable to install pip 'Adafruit_DHT'." "WARNING"
   fi
 }
 
@@ -211,6 +211,10 @@ if ! cp monitor.service /etc/systemd/system/; then
 fi
 if ! systemctl enable monitor.service; then
   message "Unable to start service 'mointor.service'." "WARNING"
+fi
+message "Enable InfluxDB service" "INFO"
+if ! systemctl enable influxdb; then
+  message "Unable to enable and start influxdb" "WARNING"
 fi
 message "Enable grafana service" "INFO"
 if ! systemctl enable grafana-server.service; then
