@@ -2,10 +2,12 @@
 import drivers
 from pigpio_dht import DHT22
 
-display = drivers.Lcd()
 sensor1 = DHT22(17)
 sensor2 = DHT22(27)
-
+try:
+    display = drivers.Lcd()
+except:
+    pass
 while True:
     try:
         result1 = sensor1.sample(samples=3)
@@ -24,3 +26,4 @@ while True:
             display.lcd_display_string("T2:{:.1f}  H2:{}% ".format(tmp2, hum2), 2)
     except:
         pass
+
