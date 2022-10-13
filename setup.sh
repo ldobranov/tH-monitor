@@ -65,9 +65,9 @@ apt_install () {
     message "Unable to install pkg 'python3-smbus'." "WARNING"
   fi
 
-  message "Installing the 'libgpiod2' pkg." "INFO"
-  if ! apt install libgpiod2 -y; then
-    message "Unable to install pkg 'libgpiod2'." "WARNING"
+  message "Installing the 'pigpio' pkg." "INFO"
+  if ! apt install pigpio -y; then
+    message "Unable to install pkg 'pigpio'." "WARNING"
   fi
   message "Installing the 'influxdb' and 'influxdb-client' pkg." "INFO"
   if ! apt install influxdb -y; then
@@ -93,8 +93,8 @@ apt_install () {
   if ! pip install influxdb; then
     message "Unable to install pip 'influxdb'." "WARNING"
   fi
-  if ! pip install adafruit-circuitpython-dht; then
-    message "Unable to install pip 'adafruit-circuitpython-dht'." "WARNING"
+  if ! pip install pigpio-dht; then
+    message "Unable to install pip 'pigpio-dht'." "WARNING"
   fi
   if ! pip install Adafruit_DHT; then
     message "Unable to install pip 'Adafruit_DHT'." "WARNING"
@@ -222,6 +222,10 @@ fi
 message "Enable grafana service" "INFO"
 if ! systemctl enable grafana-server.service; then
   message "Unable to start service 'grafana-server.service'." "WARNING"
+fi
+message "Enable pigpiod service" "INFO"
+if ! systemctl enable pigpiod.service; then
+  message "Unable to start service 'pigpiod.service'." "WARNING"
 fi
 message "Enable read_temp.py in crontab" "INFO"
 if ! python cronmon.py; then
