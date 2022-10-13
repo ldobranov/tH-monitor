@@ -96,9 +96,6 @@ apt_install () {
   if ! pip install pigpio-dht; then
     message "Unable to install pip 'pigpio-dht'." "WARNING"
   fi
-  if ! pip install Adafruit_DHT; then
-    message "Unable to install pip 'Adafruit_DHT'." "WARNING"
-  fi
   if ! pip install python-crontab; then
     message "Unable to install pip 'Adafruit_DHT'." "WARNING"
   fi
