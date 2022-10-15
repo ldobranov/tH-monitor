@@ -39,24 +39,23 @@ message () {
 }
 
 apt_install () {
-  message "Setup influx respiritory." "INFLUX"
+  message "Setup influx respiritory." "INFO"
   if !  curl -sL https://repos.influxdata.com/influxdb.key | sudo apt-key add -
         source /etc/os-release
         test $VERSION_ID = "7" && echo "deb https://repos.influxdata.com/debian wheezy stable" | sudo tee /etc/apt/sources.list.d/influxdb.list
         test $VERSION_ID = "8" && echo "deb https://repos.influxdata.com/debian jessie stable" | sudo tee /etc/apt/sources.list.d/influxdb.list
         test $VERSION_ID = "9" && echo "deb https://repos.influxdata.com/debian stretch stable" | sudo tee /etc/apt/sources.list.d/influxdb.list; then
-    message "Unable to set influx." "WARNING"
+    message "Unable to set influx." "ERROR"
   fi
+  
   if ! apt update; then
     message "Unable to update APT." "ERROR"
     end "Check your Internet connection and try again." 1
   fi
-
   message "Installing I2C-Tools." "INFO"
   if ! apt install i2c-tools -y; then
     message "Unable to install pkg 'i2c-tools'. You'll need to enter the LCD address manually." "WARNING"
   fi
-
   message "Installing the 'smbus' pkg for Py2 and Py3." "INFO"
   if ! apt install python-smbus -y; then
     message "Unable to install pkg 'python-smbus'." "WARNING"
@@ -95,9 +94,6 @@ apt_install () {
   fi
   if ! pip install pigpio-dht; then
     message "Unable to install pip 'pigpio-dht'." "WARNING"
-  fi
-  if ! pip install python-crontab; then
-    message "Unable to install pip 'Adafruit_DHT'." "WARNING"
   fi
 }
 
@@ -205,28 +201,25 @@ if modules /etc/modprobe.d/raspi-blacklist.conf "$LCD_CONFIG_DIR"/raspi-blacklis
   message "Updated required modules in '/etc/modprobe.d/raspi-blacklist.conf.'" 'INFO'
 fi
 
-message "Setup LCD service" "INFO"
+message "Setup tH_monitor service" "INFO"
 if ! cp monitor.service /etc/systemd/system/; then
-  message "Unable to set service 'mointor.service'." "WARNING"
+  message "Unable to set service 'tH-mointor.service'." "WARNING"
 fi
+message "Enable tH-monitor service" "INFO"
 if ! systemctl enable monitor.service; then
-  message "Unable to start service 'mointor.service'." "WARNING"
+  message "Unable to start service 'tH-mointor.service'." "WARNING"
 fi
-message "Enable InfluxDB service" "INFO"
+message "Enable influxDB service" "INFO"
 if ! systemctl enable influxdb; then
-  message "Unable to enable and start influxdb" "WARNING"
+  message "Unable to enable service 'influxdb'." "WARNING"
 fi
 message "Enable grafana service" "INFO"
 if ! systemctl enable grafana-server.service; then
-  message "Unable to start service 'grafana-server.service'." "WARNING"
+  message "Unable to enable service 'grafana-server.service'." "WARNING"
 fi
 message "Enable pigpiod service" "INFO"
 if ! systemctl enable pigpiod.service; then
-  message "Unable to start service 'pigpiod.service'." "WARNING"
-fi
-message "Enable read_temp.py in crontab" "INFO"
-if ! python cronmon.py; then
-  message "Unable to set crontab." "WARNING"
+  message "Unable to enable service 'pigpiod.service'." "WARNING"
 fi
 
 message "Enabling I2C on boot." 'INFO'; i2c_boot_config
