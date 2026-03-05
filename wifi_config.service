@@ -1,0 +1,14 @@
+[Unit]
+Description=tH-Monitor WiFi Configuration Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/raspberry/tH-monitor
+ExecStart=/home/raspberry/tH-monitor/venv/bin/python3 /home/raspberry/tH-monitor/wifi_config_app.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
