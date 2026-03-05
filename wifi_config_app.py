@@ -2,7 +2,7 @@
 """
 WiFi Configuration Web Server
 Based on RaspiWiFi concept - provides a web interface to configure WiFi credentials
-Runs on port 8080 and creates an AP mode when in configuration mode
+Runs on port 8080 and allows configuring existing WiFi networks
 """
 
 from flask import Flask, render_template_string, request, redirect, url_for
@@ -11,6 +11,7 @@ import os
 import time
 import logging
 import threading
+import sys
 
 app = Flask(__name__)
 
@@ -136,7 +137,7 @@ HTML_TEMPLATE = '''
         </form>
         
         <form method="POST" action="/reset">
-            <button type="submit" style="background-color: #dc3545;">Reset to Configuration Mode</button>
+            <button type="submit" style="background-color: #dc3545;">Reset WiFi</button>
         </form>
     </div>
 </body>
@@ -146,42 +147,24 @@ HTML_TEMPLATE = '''
 def get_current_wifi_status():
     """Get current WiFi status"""
     try:
+        # Get IP address
         result = subprocess.run(['hostname', '-I'], capture_output=True, text=True, timeout=5)
-        ip_address = result.stdout.strip().split()[0] if result.stdout else 'Not connected'
-    except:
-        ip_address = 'Not connected'
-    
-    try:
+        ip_address = result.stdout.strip() if result.stdout else 'No IP'
+        
+        # Get SSID
         result = subprocess.run(['iwgetid', '-r'], capture_output=True, text=True, timeout=5)
-        ssid = result.stdout.strip() if result.stdout else 'Not connected'
-    except:
-        ssid = 'Not connected'
-    
-    return ssid, ip_address
-
-def get_available_networks():
-    """Scan for available WiFi networks"""
-    try:
-        result = subprocess.run(['sudo', 'iwlist', 'wlan0', 'scan'], capture_output=True, text=True, timeout=10)
-        lines = result.stdout.split('\n')
-        networks = []
-        current_ssid = ''
+        current_ssid = result.stdout.strip() if result.stdout else 'Not connected'
         
-        for line in lines:
-            if 'ESSID' in line:
-                ssid = line.split('"')[1] if '"' in line else ''
-                if ssid and ssid not in networks:
-                    networks.append(ssid)
-        
-        return networks[:10]  # Return first 10 networks
-    except:
-        return []
+        return current_ssid, ip_address
+    except Exception as e:
+        logger.error(f"Error getting WiFi status: {str(e)}")
+        return 'Not connected', 'No IP'
 
 def configure_wifi(ssid, password):
     """Configure WiFi with new credentials"""
     try:
         # Create wpa_supplicant configuration
-        config = f'''country=US
+        config = f'''country=BG
 ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
 update_config=1
 
@@ -199,34 +182,25 @@ network={{
         os.chmod(WIFI_CONFIG_FILE, 0o600)
         
         # Restart wpa_supplicant
-        subprocess.run(['sudo', 'wpa_cli', '-i', 'wlan0', 'reconfigure'], timeout=10)
+        subprocess.run(['sudo', 'systemctl', 'restart', 'wpa_supplicant'], timeout=10)
+        
+        # Restart networking to apply changes
+        subprocess.run(['sudo', 'systemctl', 'restart', 'NetworkManager'], timeout=10)
         
         return True, "WiFi configured! Rebooting to connect..."
     except Exception as e:
         return False, f"Error configuring WiFi: {str(e)}"
 
-def restart_network():
-    """Restart network services"""
-    try:
-        subprocess.run(['sudo', 'systemctl', 'restart', 'dhcpcd'], timeout=10)
-        return True
-    except:
-        try:
-            subprocess.run(['sudo', 'systemctl', 'restart', 'NetworkManager'], timeout=10)
-            return True
-        except:
-            return False
-
 @app.route('/')
 def index():
     """Main configuration page"""
-    ssid, ip_address = get_current_wifi_status()
+    current_ssid, ip_address = get_current_wifi_status()
     return render_template_string(HTML_TEMPLATE, 
                                   status=None, 
                                   status_class='info',
-                                  ssid=ssid,
+                                  ssid='',
                                   ip_address=ip_address,
-                                  current_ssid=ssid)
+                                  current_ssid=current_ssid)
 
 @app.route('/save', methods=['POST'])
 def save_config():
@@ -235,17 +209,17 @@ def save_config():
     password = request.form.get('password', '').strip()
     
     if not ssid:
-        ssid, ip_address = get_current_wifi_status()
+        current_ssid, ip_address = get_current_wifi_status()
         return render_template_string(HTML_TEMPLATE,
                                       status="Please enter a network name",
                                       status_class='error',
                                       ssid='',
                                       ip_address=ip_address,
-                                      current_ssid=ssid)
+                                      current_ssid=current_ssid)
     
     success, message = configure_wifi(ssid, password)
     
-    ssid, ip_address = get_current_wifi_status()
+    current_ssid, ip_address = get_current_wifi_status()
     
     if success:
         # Schedule a reboot after a short delay
@@ -262,36 +236,41 @@ def save_config():
                                   status_class='success' if success else 'error',
                                   ssid=ssid,
                                   ip_address=ip_address,
-                                  current_ssid=ssid)
+                                  current_ssid=current_ssid)
 
 @app.route('/reset', methods=['POST'])
 def reset_mode():
-    """Reset to configuration mode (disconnect current WiFi)"""
+    """Reset WiFi configuration"""
     try:
-        # Remove existing network configurations
-        subprocess.run(['sudo', 'wpa_cli', '-i', 'wlan0', 'remove_network', '0'], timeout=5)
-        subprocess.run(['sudo', 'wpa_cli', '-i', 'wlan0', 'save_config'], timeout=5)
-        
-        # Create an open network for configuration
-        config = '''country=US
+        # Create empty wpa_supplicant configuration to reset WiFi
+        config = '''country=BG
 ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
 update_config=1
 '''
+        
         with open(WIFI_CONFIG_FILE, 'w') as f:
             f.write(config)
         
+        os.chmod(WIFI_CONFIG_FILE, 0o600)
+        
+        # Restart wpa_supplicant
+        subprocess.run(['sudo', 'systemctl', 'restart', 'wpa_supplicant'], timeout=10)
+        
+        # Restart networking
+        subprocess.run(['sudo', 'systemctl', 'restart', 'NetworkManager'], timeout=10)
+        
         return render_template_string(HTML_TEMPLATE,
-                                      status="Network reset. Device is now in configuration mode.",
+                                      status="WiFi configuration reset. Device will scan for available networks.",
                                       status_class='info',
                                       ssid='',
-                                      ip_address='Not connected',
+                                      ip_address='No IP',
                                       current_ssid='Not connected')
     except Exception as e:
         return render_template_string(HTML_TEMPLATE,
                                       status=f"Error: {str(e)}",
                                       status_class='error',
                                       ssid='',
-                                      ip_address='Not connected',
+                                      ip_address='No IP',
                                       current_ssid='Not connected')
 
 if __name__ == '__main__':
