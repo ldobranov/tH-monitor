@@ -1,9 +1,9 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 import logging
 import drivers
 import datetime
 import os
-import threading
+import time
 from pigpio_dht import DHT22
 from influxdb import client as influxdb
 #logmode = logging.DEBUG
@@ -19,15 +19,21 @@ influxHost = 'localhost'
 influxUser = 'admin'
 with open(os.path.dirname(os.path.abspath(__file__)) + '/secretstring', 'r') as f:
     influxPasswd = f.readline().strip()
-f.close()
 
 old_time = datetime.datetime.utcnow() - datetime.timedelta(minutes=5)
+
+# Initialize sensor reading variables
+tmp1 = None
+hum1 = None
+tmp2 = None
+hum2 = None
 
 try:
     display = drivers.Lcd()
     logging.warning(datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S') + "  -- LCD started")
 except:
     logging.error(datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S') + "  -- LCD error")
+    display = None
     pass
 
 while True:
@@ -36,7 +42,11 @@ while True:
         if (result1.get('valid') == True):
             tmp1 = result1.get('temp_c')
             hum1 = result1.get('humidity')
-            display.lcd_display_string("T1:{:.1f}  H1:{}% ".format(tmp1, hum1), 1)
+            if display is not None:
+                try:
+                    display.lcd_display_string("T1:{:.1f}  H1:{}% ".format(tmp1, hum1), 1)
+                except:
+                    logging.error(datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S') + "  -- LCD write error (line 1)")
             logging.info(datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S') + "  -- sensor 1 readed")
     except:
         logging.debug(datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S') + "  -- Sensor 1 error")
@@ -47,8 +57,12 @@ while True:
         if (result2.get('valid') == True):
             tmp2 = result2.get('temp_c')
             hum2 = result2.get('humidity')
-            display.lcd_display_string("T2:{:.1f}  H2:{}% ".format(tmp2, hum2), 2)
-            logging.info(datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S') + "  -- Sensor 2 readed")
+            if display is not None:
+                try:
+                    display.lcd_display_string("T2:{:.1f}  H2:{}% ".format(tmp2, hum2), 2)
+                except:
+                    logging.error(datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S') + "  -- LCD write error (line 2)")
+            logging.info(datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S') + "  -- sensor 2 readed")
     except:
         logging.debug(datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S') + "  -- Sensor 2 error")
         pass
@@ -56,7 +70,7 @@ while True:
     #Saving data to InfluxDB
     try:
         current_time = datetime.datetime.utcnow()
-        if ( current_time - datetime.timedelta(minutes=5) > old_time):
+        if (current_time - datetime.timedelta(minutes=5) > old_time and all(v is not None for v in [tmp1, hum1, tmp2, hum2])):
             logging.info(datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S') + "  -- Start saving to db...")
             influxdbName = 'temperature'
             old_time = current_time
@@ -74,12 +88,14 @@ while True:
                 db = influxdb.InfluxDBClient(influxHost, 8086, influxUser, influxPasswd, influxdbName)
                 db.write_points(influx_metric)
                 logging.info(current_time.strftime('%Y-%m-%dT%H:%M:%S') + "  -- Saved to db")
-
-            except:
-                logging.error(current_time.strftime('%Y-%m-%dT%H:%M:%S') + "  -- ERROR Saving to db")
+            except Exception as e:
+                logging.error(current_time.strftime('%Y-%m-%dT%H:%M:%S') + "  -- ERROR Saving to db: " + str(e))
                 pass
+            finally:
+                if 'db' in locals():
+                    db.close()
+    except Exception as e:
+        logging.error(datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S') + "  -- Error in data saving loop: " + str(e))
 
-            #finally:
-            #db.close()
-    except:
-        logging.error(datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S') + "  --  NO LCD AND SENSORS CONECTED!!!")
+    # Wait 2 seconds before next reading to avoid sensor and CPU overload
+    time.sleep(2)
