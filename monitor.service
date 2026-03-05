@@ -1,14 +1,15 @@
 [Unit]
-Description=Grow Monitor LCD
+Description=Temperature and Humidity Monitor
+After=network.target influxdb.service grafana-server.service pigpiod.service
 
 [Service]
-
 Type=simple
-User=pi
-ExecStart=python /home/pi/tH-monitor/monitor.py
-Restart = on-failure
-RestartSec = 5
-TimeoutStartSec = infinity
+User=raspberry
+WorkingDirectory=/home/raspberry/tH-monitor
+ExecStart=/usr/bin/python3 /home/raspberry/tH-monitor/monitor.py
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=infinity
 
 [Install]
 WantedBy=multi-user.target
