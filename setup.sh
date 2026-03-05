@@ -90,18 +90,13 @@ apt_install () {
     message "Unable to install python3-venv or python3-pip." "WARNING"
   fi
   
-  # Create virtual environment
-  message "Creating Python virtual environment." "INFO"
-  cd /home/raspberry/tH-monitor
-  python3 -m venv venv
-  
-  # Install Python packages in virtual environment
-  message "Installing Python packages in virtual environment." "INFO"
-  ./venv/bin/pip install --upgrade pip
-  ./venv/bin/pip install pigpio-dht
-  ./venv/bin/pip install influxdb
-  ./venv/bin/pip install pigpio
-  ./venv/bin/pip install flask
+  # Install Python packages system-wide
+  message "Installing Python packages system-wide." "INFO"
+  pip3 install --upgrade pip --break-system-packages
+  pip3 install pigpio-dht --break-system-packages
+  pip3 install influxdb --break-system-packages
+  pip3 install pigpio --break-system-packages
+  pip3 install flask --break-system-packages
 }
 
 # takes a package ($1) as arg
@@ -150,6 +145,13 @@ modules () {
 i2c_boot_config () {
   local line; local i2c_reconfig; local i2c_reconfig_line
 
+  # Check if i2c is already enabled
+  if grep -q "^dtparam=i2c_arm=on" "$RPI_CONFIG"; then
+    message "I2C is already enabled in $RPI_CONFIG." 'INFO'
+    return 0
+  fi
+
+  # Check for existing i2c config
   while read -r line; do
     if [[ "$line" =~ ^dtparam=i2c(_arm){0,1}(=on|=1){0,1}$ ]]; then
       i2c_reconfig='false'; break
@@ -164,13 +166,18 @@ i2c_boot_config () {
   if [[ "$i2c_reconfig" == 'true' ]]; then
     # delete i2c=off config and append i2c=on config
     delete_line "$i2c_reconfig_line" "$RPI_CONFIG"
-    echo "dtparam=i2c" | tee -a "$RPI_CONFIG" > /dev/null
+    echo "dtparam=i2c_arm=on" | tee -a "$RPI_CONFIG" > /dev/null
   elif [[ -z "$i2c_reconfig" ]]; then
     # i2c config not found, append to file
-    echo "dtparam=i2c" | tee -a "$RPI_CONFIG" > /dev/null
+    echo "dtparam=i2c_arm=on" | tee -a "$RPI_CONFIG" > /dev/null
   fi
 
-  message "Your $RPI_CONFIG was edited but there is a backup of the original file in $RPI_CONFIG.backup" 'INFO'
+  # Load the new i2c module
+  if ! modprobe i2c-dev; then
+    message "Failed to load i2c-dev module." 'WARNING'
+  fi
+
+  message "I2C has been enabled in $RPI_CONFIG and i2c-dev module loaded." 'INFO'
 }
 
 
@@ -232,6 +239,10 @@ fi
 message "Setup WiFi configuration service" "INFO"
 if ! cp wifi_config.service /etc/systemd/system/; then
   message "Unable to copy wifi_config.service." "WARNING"
+fi
+message "Enable WiFi configuration service" "INFO"
+if ! systemctl enable wifi_config.service; then
+  message "Unable to enable service 'wifi_config.service'." "WARNING"
 fi
 
 message "Enabling I2C on boot." 'INFO'; i2c_boot_config
