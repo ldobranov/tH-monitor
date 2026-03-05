@@ -160,9 +160,6 @@ def enter_wifi_config_mode():
         logging.info("WiFi config service started")
     except Exception as e:
         logging.error("Failed to start WiFi config service: " + str(e))
-    
-    # Update display to show WiFi config info
-    update_display()
 
 def update_display():
     """Update LCD based on current display mode - thread safe"""
