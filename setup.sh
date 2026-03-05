@@ -85,16 +85,23 @@ apt_install () {
   if ! dpkg -i grafana-rpi_8.1.8_armhf.deb; then
     message "Unable to install 'grafana-rpi_8.1.8_armhf.deb'." "WARNING"
   fi
-  message "Installing the 'pip' pkg for Py3." "INFO"
-  if ! apt install python3-pip -y; then
-    message "Unable to install pkg 'python3-pip'." "WARNING"
+  message "Installing python3-venv and pip." "INFO"
+  if ! apt install python3-venv python3-pip -y; then
+    message "Unable to install python3-venv or python3-pip." "WARNING"
   fi
-  if ! pip install influxdb; then
-    message "Unable to install pip 'influxdb'." "WARNING"
-  fi
-  if ! pip install pigpio-dht; then
-    message "Unable to install pip 'pigpio-dht'." "WARNING"
-  fi
+  
+  # Create virtual environment
+  message "Creating Python virtual environment." "INFO"
+  cd /home/raspberry/tH-monitor
+  python3 -m venv venv
+  
+  # Install Python packages in virtual environment
+  message "Installing Python packages in virtual environment." "INFO"
+  ./venv/bin/pip install --upgrade pip
+  ./venv/bin/pip install pigpio-dht
+  ./venv/bin/pip install influxdb
+  ./venv/bin/pip install pigpio
+  ./venv/bin/pip install flask
 }
 
 # takes a package ($1) as arg
@@ -220,6 +227,11 @@ fi
 message "Enable pigpiod service" "INFO"
 if ! systemctl enable pigpiod.service; then
   message "Unable to enable service 'pigpiod.service'." "WARNING"
+fi
+
+message "Setup WiFi configuration service" "INFO"
+if ! cp wifi_config.service /etc/systemd/system/; then
+  message "Unable to copy wifi_config.service." "WARNING"
 fi
 
 message "Enabling I2C on boot." 'INFO'; i2c_boot_config
