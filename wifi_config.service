@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/home/raspberry/tH-monitor
-ExecStart=/usr/bin/python3 /home/raspberry/tH-monitor/wifi_config_app.py
+ExecStart=/usr/bin/python3 /home/raspberry/tH-monitor/wifi_safe_config.py
 Restart=always
 RestartSec=5
 
