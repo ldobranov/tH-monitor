@@ -23,6 +23,7 @@ import subprocess
 import threading
 import time
 from datetime import datetime
+from pathlib import Path
 
 app = Flask(__name__)
 
@@ -30,6 +31,9 @@ LOG_FILE = '/home/raspberry/tH-monitor/wifi_safe_config.log'
 PENDING_CONFIG_FILE = '/home/raspberry/tH-monitor/pending_wifi.env'
 RUNTIME_SWITCH_SCRIPT = '/tmp/apply_saved_wifi.sh'
 DEFAULT_FALLBACK_SSID = 'KavalaVIVA'
+HOSTAPD_TEMPLATE_FILE = '/home/raspberry/tH-monitor/hostapd.conf'
+AP_SSID = 'tH-Monitor-Config'
+AP_ADDRESS = '192.168.4.1/24'
 
 logging.basicConfig(
     filename=LOG_FILE,
@@ -471,7 +475,10 @@ def background_apply_saved_wifi(ssid, password):
             'pkill -f "hostapd /tmp/hostapd.conf" >/dev/null 2>&1 || true',
             'pkill -f "dnsmasq -C /tmp/dnsmasq.conf" >/dev/null 2>&1 || true',
             'rm -f /var/run/dnsmasq.pid >/dev/null 2>&1 || true',
+            'systemctl stop hostapd >/dev/null 2>&1 || true',
+            'systemctl stop dnsmasq >/dev/null 2>&1 || true',
             'systemctl restart NetworkManager >/dev/null 2>&1 || true',
+            'systemctl restart wpa_supplicant >/dev/null 2>&1 || true',
             'sleep 3',
         ]
         _, connection_commands = build_connection_commands(ssid, password)
@@ -514,43 +521,41 @@ def start_ap_mode():
     """Start AP mode from the web UI on Raspberry Pi OS Trixie systems."""
     try:
         log_nmcli_state('before-start-ap')
+        hostapd_conf = get_hostapd_config_text()
         script_lines = [
             '#!/bin/bash',
             'set -e',
-            'sleep 2',
+            'sleep 1',
             'logger -t wifi_safe_config "Switching wlan0 into AP/config mode"',
+            'export DEBIAN_FRONTEND=noninteractive',
+            'systemctl stop NetworkManager >/dev/null 2>&1 || true',
+            'systemctl stop wpa_supplicant >/dev/null 2>&1 || true',
+            'systemctl stop hostapd >/dev/null 2>&1 || true',
+            'systemctl stop dnsmasq >/dev/null 2>&1 || true',
             'pkill -f "hostapd /tmp/hostapd.conf" >/dev/null 2>&1 || true',
             'pkill -f "dnsmasq -C /tmp/dnsmasq.conf" >/dev/null 2>&1 || true',
             'rm -f /var/run/dnsmasq.pid >/dev/null 2>&1 || true',
             'systemctl unmask hostapd >/dev/null 2>&1 || true',
             'rfkill unblock wifi >/dev/null 2>&1 || true',
-            'nmcli device disconnect wlan0 >/dev/null 2>&1 || true',
-            'systemctl stop wpa_supplicant >/dev/null 2>&1 || true',
-            'systemctl stop NetworkManager >/dev/null 2>&1 || true',
             'ip link set wlan0 down >/dev/null 2>&1 || true',
             'ip addr flush dev wlan0 >/dev/null 2>&1 || true',
             'ip link set wlan0 up >/dev/null 2>&1 || true',
-            'ip addr add 192.168.4.1/24 dev wlan0 >/dev/null 2>&1 || true',
+            f'ip addr add {AP_ADDRESS} dev wlan0',
+            'sleep 1',
             'hostapd -B /tmp/hostapd.conf',
-            'dnsmasq -C /tmp/dnsmasq.conf -x /var/run/dnsmasq.pid',
+            'sleep 1',
+            'dnsmasq --conf-file=/tmp/dnsmasq.conf --pid-file=/var/run/dnsmasq.pid',
             'sleep 2',
             'ip addr show wlan0 | logger -t wifi_safe_config',
             'pgrep -a hostapd | logger -t wifi_safe_config',
             'pgrep -a dnsmasq | logger -t wifi_safe_config',
-            'logger -t wifi_safe_config "AP/config mode started on 192.168.4.1"',
+            f'logger -t wifi_safe_config "AP/config mode started on {AP_ADDRESS}"',
         ]
 
         ap_bootstrap = [
             '#!/bin/bash',
             'cat > /tmp/hostapd.conf <<\'EOF\'',
-            'interface=wlan0',
-            'ssid=tH-Monitor-Config',
-            'channel=1',
-            'hw_mode=g',
-            'ieee80211n=1',
-            'wmm_enabled=1',
-            'macaddr_acl=0',
-            'ignore_broadcast_ssid=0',
+            *hostapd_conf.splitlines(),
             'EOF',
             'chmod 644 /tmp/hostapd.conf',
             'cat > /tmp/dnsmasq.conf <<\'EOF\'',
@@ -572,6 +577,32 @@ def start_ap_mode():
     except Exception as exc:
         logger.error('Failed to start AP mode: %s', str(exc))
         return False, f'Failed to start AP mode: {exc}'
+
+
+def get_hostapd_config_text():
+    """Load hostapd config template with sane defaults for Pi Zero/Trixie."""
+    default_text = '\n'.join([
+        'interface=wlan0',
+        'driver=nl80211',
+        f'ssid={AP_SSID}',
+        'channel=1',
+        'hw_mode=g',
+        'ieee80211n=1',
+        'wmm_enabled=1',
+        'macaddr_acl=0',
+        'ignore_broadcast_ssid=0',
+    ])
+
+    path = Path(HOSTAPD_TEMPLATE_FILE)
+    if not path.exists():
+        return default_text
+
+    try:
+        text = path.read_text(encoding='utf-8').strip()
+        return text or default_text
+    except Exception as exc:
+        logger.error('Failed to read hostapd template %s: %s', HOSTAPD_TEMPLATE_FILE, str(exc))
+        return default_text
 
 
 @app.route('/')
