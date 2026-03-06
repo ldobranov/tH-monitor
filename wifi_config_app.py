@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 WiFi Configuration Web Server
-Based on RaspiWiFi concept - provides a web interface to configure WiFi credentials
+Simplified version - focuses on restoring connectivity
 Runs on port 8080 and allows configuring existing WiFi networks
 """
 
@@ -90,19 +90,6 @@ HTML_TEMPLATE = '''
         }
         button:hover {
             background-color: #45a049;
-        }
-        .networks {
-            margin: 20px 0;
-        }
-        .network-item {
-            padding: 10px;
-            margin: 5px 0;
-            background: #f9f9f9;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        .network-item:hover {
-            background: #e9e9e9;
         }
         .current-status {
             text-align: center;
@@ -242,7 +229,7 @@ def save_config():
 def reset_mode():
     """Reset WiFi configuration"""
     try:
-        # Create empty wpa_supplicant configuration to reset WiFi
+        # Create a simple wpa_supplicant configuration
         config = '''country=BG
 ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
 update_config=1
@@ -260,11 +247,11 @@ update_config=1
         subprocess.run(['sudo', 'systemctl', 'restart', 'NetworkManager'], timeout=10)
         
         return render_template_string(HTML_TEMPLATE,
-                                      status="WiFi configuration reset. Device will scan for available networks.",
+                                      status="WiFi configuration reset. Please scan and connect to tH-Monitor-Config network.",
                                       status_class='info',
                                       ssid='',
-                                      ip_address='No IP',
-                                      current_ssid='Not connected')
+                                      ip_address='192.168.4.1',
+                                      current_ssid='tH-Monitor-Config')
     except Exception as e:
         return render_template_string(HTML_TEMPLATE,
                                       status=f"Error: {str(e)}",
