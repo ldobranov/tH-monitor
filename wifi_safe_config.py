@@ -21,7 +21,6 @@ AP_SSID = 'tH-Monitor-Config'
 AP_ADDRESS = '192.168.4.1/24'
 AP_BASE_ADDRESS = '192.168.4.1'
 AP_MODE_MARKER_FILE = '/home/raspberry/tH-monitor/ap_mode_active'
-AP_WATCHDOG_SCRIPT = '/tmp/ap_watchdog.sh'
 
 logging.basicConfig(
     filename=LOG_FILE,
@@ -342,30 +341,6 @@ def write_ap_mode_marker(active):
         logger.error('Failed to update AP mode marker: %s', str(exc))
 
 
-def build_ap_watchdog_script():
-    return '\n'.join([
-        '#!/bin/bash',
-        'MARKER="/home/raspberry/tH-monitor/ap_mode_active"',
-        'LOG_FILE="/home/raspberry/tH-monitor/start_ap.log"',
-        'pkill -f "wpa_supplicant.*wlan0" >/dev/null 2>&1 || true',
-        'pkill -f "NetworkManager" >/dev/null 2>&1 || true',
-        'while [ -f "$MARKER" ]; do',
-        '  sleep 5',
-        '  pkill -f "wpa_supplicant.*wlan0" >/dev/null 2>&1 || true',
-        '  pkill -f "NetworkManager" >/dev/null 2>&1 || true',
-        '  pgrep -f "/tmp/hostapd.conf" >/dev/null 2>&1 || {',
-        '    echo "$(date \'+%Y-%m-%d %H:%M:%S\') [ap_watchdog] hostapd missing, restarting AP" >> "$LOG_FILE"',
-        '    bash /home/raspberry/tH-monitor/start_ap.sh >> "$LOG_FILE" 2>&1',
-        '    continue',
-        '  }',
-        '  iw dev wlan0 info 2>/dev/null | grep -q "type AP" || {',
-        '    echo "$(date \'+%Y-%m-%d %H:%M:%S\') [ap_watchdog] wlan0 not in AP mode, restarting AP" >> "$LOG_FILE"',
-        '    bash /home/raspberry/tH-monitor/start_ap.sh >> "$LOG_FILE" 2>&1',
-        '  }',
-        'done',
-    ]) + '\n'
-
-
 def get_available_networks(force_rescan=False):
     """Return visible WiFi networks without changing the current connection state."""
     global LAST_SCAN_RESULTS
@@ -557,14 +532,14 @@ def render_page(status=None, status_class='info', ssid=None, password=''):
 
 
 def start_ap_mode():
-    """Start AP mode by delegating to the existing project AP script."""
+    """Start AP mode and do not return until AP handoff script is launched."""
     try:
         write_ap_mode_marker(True)
         log_nmcli_state('before-start-ap')
 
         script_lines = [
             '#!/bin/bash',
-            'set -x',
+            'set +e',
             'sleep 1',
             'logger -t wifi_safe_config "Switching wlan0 into AP/config mode"',
             'export DEBIAN_FRONTEND=noninteractive',
@@ -572,9 +547,13 @@ def start_ap_mode():
             'nmcli connection modify netplan-wlan0-KavalaVIVA connection.autoconnect no >/dev/null 2>&1 || true',
             'nmcli connection modify tH-monitor-KavalaVIVA connection.autoconnect no >/dev/null 2>&1 || true',
             'nmcli connection down tH-monitor-KavalaVIVA >/dev/null 2>&1 || true',
-            'nmcli connection modify tH-monitor-VIVACOM123 connection.autoconnect no >/dev/null 2>&1 || true',
-            'pkill -f "NetworkManager" >/dev/null 2>&1 || true',
-            'pkill -f "wpa_supplicant.*wlan0" >/dev/null 2>&1 || true',
+            'nmcli connection show | awk \'/^(tH-monitor-|netplan-wlan0-)/ {print $1}\' | while read conn; do nmcli connection modify "$conn" connection.autoconnect no >/dev/null 2>&1 || true; done',
+            'systemctl disable --now NetworkManager >/dev/null 2>&1 || true',
+            'systemctl disable --now wpa_supplicant >/dev/null 2>&1 || true',
+            'systemctl disable --now dhcpcd >/dev/null 2>&1 || true',
+            'pkill -9 -f "NetworkManager" >/dev/null 2>&1 || true',
+            'pkill -9 -f "wpa_supplicant" >/dev/null 2>&1 || true',
+            'pkill -9 -f "dhcpcd" >/dev/null 2>&1 || true',
             'nmcli device set wlan0 autoconnect no >/dev/null 2>&1 || true',
             'systemctl stop hostapd >/dev/null 2>&1 || true',
             'systemctl stop dnsmasq >/dev/null 2>&1 || true',
@@ -583,14 +562,8 @@ def start_ap_mode():
             'rm -f /var/run/dnsmasq.pid >/dev/null 2>&1 || true',
             'rfkill unblock wifi >/dev/null 2>&1 || true',
             'chmod +x /home/raspberry/tH-monitor/start_ap.sh >/dev/null 2>&1 || true',
-            'bash /home/raspberry/tH-monitor/start_ap.sh >> /home/raspberry/tH-monitor/wifi_safe_config.log 2>&1',
-            f'cat > {AP_WATCHDOG_SCRIPT} <<\'EOF\'',
-            *build_ap_watchdog_script().rstrip('\n').split('\n'),
-            'EOF',
-            f'chmod +x {AP_WATCHDOG_SCRIPT}',
-            f'pkill -f "{AP_WATCHDOG_SCRIPT}" >/dev/null 2>&1 || true',
-            f'nohup bash {AP_WATCHDOG_SCRIPT} >/dev/null 2>&1 &',
-            'sleep 4',
+            'bash /home/raspberry/tH-monitor/start_ap.sh >> /home/raspberry/tH-monitor/start_ap.log 2>&1',
+            'sleep 2',
             'ip addr show wlan0 | logger -t wifi_safe_config',
             'pgrep -a hostapd | logger -t wifi_safe_config',
             'pgrep -a dnsmasq | logger -t wifi_safe_config',
