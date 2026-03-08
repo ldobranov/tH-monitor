@@ -68,6 +68,10 @@ apt_install () {
   if ! apt install pigpio -y; then
     message "Unable to install pkg 'pigpio'." "WARNING"
   fi
+  message "Installing WiFi AP packages 'hostapd' and 'dnsmasq'." "INFO"
+  if ! apt install hostapd dnsmasq -y; then
+    message "Unable to install pkg 'hostapd' or 'dnsmasq'." "WARNING"
+  fi
   message "Installing the 'influxdb' and 'influxdb-client' pkg." "INFO"
   if ! apt install influxdb -y; then
     message "Unable to install pkg 'influxdb'." "WARNING"
