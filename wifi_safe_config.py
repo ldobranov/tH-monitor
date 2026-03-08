@@ -1,18 +1,5 @@
 #!/usr/bin/env python3
-"""
-WiFi configuration portal for Raspberry Pi Zero v1.1.
-
-Design goals:
-- Keep the config web page responsive while the device is in AP mode.
-- Allow scanning for nearby infrastructure networks from the page.
-- Save credentials without performing an immediate `nmcli dev wifi connect`
-  test that tears down the current AP session on the single-radio wlan0.
-- Perform the actual switch only when explicitly requested, with clear user
-  messaging that the AP session will end on success.
-
-This is intentionally conservative for Pi Zero hardware: one wireless radio
-cannot reliably serve as AP and station at the same time in this workflow.
-"""
+"""WiFi configuration portal with safer client switch and AP handoff."""
 
 from flask import Flask, render_template_string, request
 import html
@@ -23,7 +10,6 @@ import subprocess
 import threading
 import time
 from datetime import datetime
-from pathlib import Path
 
 app = Flask(__name__)
 
@@ -31,9 +17,11 @@ LOG_FILE = '/home/raspberry/tH-monitor/wifi_safe_config.log'
 PENDING_CONFIG_FILE = '/home/raspberry/tH-monitor/pending_wifi.env'
 RUNTIME_SWITCH_SCRIPT = '/tmp/apply_saved_wifi.sh'
 DEFAULT_FALLBACK_SSID = 'KavalaVIVA'
-HOSTAPD_TEMPLATE_FILE = '/home/raspberry/tH-monitor/hostapd.conf'
 AP_SSID = 'tH-Monitor-Config'
 AP_ADDRESS = '192.168.4.1/24'
+AP_BASE_ADDRESS = '192.168.4.1'
+AP_MODE_MARKER_FILE = '/home/raspberry/tH-monitor/ap_mode_active'
+AP_WATCHDOG_SCRIPT = '/tmp/ap_watchdog.sh'
 
 logging.basicConfig(
     filename=LOG_FILE,
@@ -343,6 +331,41 @@ def get_current_wifi_status():
         return 'Not connected', 'No IP', 'Unknown'
 
 
+def write_ap_mode_marker(active):
+    try:
+        if active:
+            with open(AP_MODE_MARKER_FILE, 'w', encoding='utf-8') as handle:
+                handle.write('1\n')
+        elif os.path.exists(AP_MODE_MARKER_FILE):
+            os.remove(AP_MODE_MARKER_FILE)
+    except Exception as exc:
+        logger.error('Failed to update AP mode marker: %s', str(exc))
+
+
+def build_ap_watchdog_script():
+    return '\n'.join([
+        '#!/bin/bash',
+        'MARKER="/home/raspberry/tH-monitor/ap_mode_active"',
+        'LOG_FILE="/home/raspberry/tH-monitor/start_ap.log"',
+        'pkill -f "wpa_supplicant.*wlan0" >/dev/null 2>&1 || true',
+        'pkill -f "NetworkManager" >/dev/null 2>&1 || true',
+        'while [ -f "$MARKER" ]; do',
+        '  sleep 5',
+        '  pkill -f "wpa_supplicant.*wlan0" >/dev/null 2>&1 || true',
+        '  pkill -f "NetworkManager" >/dev/null 2>&1 || true',
+        '  pgrep -f "/tmp/hostapd.conf" >/dev/null 2>&1 || {',
+        '    echo "$(date \'+%Y-%m-%d %H:%M:%S\') [ap_watchdog] hostapd missing, restarting AP" >> "$LOG_FILE"',
+        '    bash /home/raspberry/tH-monitor/start_ap.sh >> "$LOG_FILE" 2>&1',
+        '    continue',
+        '  }',
+        '  iw dev wlan0 info 2>/dev/null | grep -q "type AP" || {',
+        '    echo "$(date \'+%Y-%m-%d %H:%M:%S\') [ap_watchdog] wlan0 not in AP mode, restarting AP" >> "$LOG_FILE"',
+        '    bash /home/raspberry/tH-monitor/start_ap.sh >> "$LOG_FILE" 2>&1',
+        '  }',
+        'done',
+    ]) + '\n'
+
+
 def get_available_networks(force_rescan=False):
     """Return visible WiFi networks without changing the current connection state."""
     global LAST_SCAN_RESULTS
@@ -438,7 +461,10 @@ def build_connection_commands(ssid, password):
 
     commands = [
         f'nmcli connection delete {quoted_connection} >/dev/null 2>&1 || true',
-        f'nmcli connection add type wifi con-name {quoted_connection} ifname wlan0 ssid {quoted_ssid}'
+        f'nmcli connection add type wifi con-name {quoted_connection} ifname wlan0 ssid {quoted_ssid}',
+        f'nmcli connection modify {quoted_connection} connection.interface-name wlan0',
+        f'nmcli connection modify {quoted_connection} 802-11-wireless.mode infrastructure',
+        f'nmcli connection modify {quoted_connection} ipv4.method auto ipv6.method auto',
     ]
 
     if password:
@@ -450,7 +476,12 @@ def build_connection_commands(ssid, password):
             f'nmcli connection modify {quoted_connection} 802-11-wireless-security.key-mgmt none >/dev/null 2>&1 || true'
         )
 
+        commands.append(f'nmcli connection modify {quoted_connection} wifi-sec.auth-alg open')
+
     commands.append(f'nmcli connection modify {quoted_connection} connection.autoconnect yes')
+    commands.append('nmcli connection modify netplan-wlan0-KavalaVIVA connection.autoconnect no >/dev/null 2>&1 || true')
+    commands.append(f'nmcli device set wlan0 autoconnect yes >/dev/null 2>&1 || true')
+    commands.append('nmcli general reload >/dev/null 2>&1 || true')
     commands.append(f'nmcli connection up {quoted_connection}')
     return connection_name, commands
 
@@ -462,6 +493,7 @@ def background_apply_saved_wifi(ssid, password):
         SWITCH_IN_PROGRESS = True
 
     try:
+        write_ap_mode_marker(False)
         log_nmcli_state('before-apply-saved-wifi', {'target_ssid': ssid})
 
         connection_name = f'tH-monitor-{ssid}'
@@ -477,12 +509,19 @@ def background_apply_saved_wifi(ssid, password):
             'rm -f /var/run/dnsmasq.pid >/dev/null 2>&1 || true',
             'systemctl stop hostapd >/dev/null 2>&1 || true',
             'systemctl stop dnsmasq >/dev/null 2>&1 || true',
+            'ip addr flush dev wlan0 >/dev/null 2>&1 || true',
             'systemctl restart NetworkManager >/dev/null 2>&1 || true',
             'systemctl restart wpa_supplicant >/dev/null 2>&1 || true',
             'sleep 3',
         ]
         _, connection_commands = build_connection_commands(ssid, password)
         script_lines.extend(connection_commands)
+        script_lines.extend([
+            'sleep 5',
+            'nmcli -t -f DEVICE,STATE,CONNECTION device status | logger -t wifi_safe_config',
+            'nmcli -t -f NAME,DEVICE connection show --active | logger -t wifi_safe_config',
+            'hostname -I | logger -t wifi_safe_config',
+        ])
         script_lines.append(f'logger -t wifi_safe_config "WiFi switch command sequence completed for SSID {ssid}"')
 
         with open(RUNTIME_SWITCH_SCRIPT, 'w', encoding='utf-8') as handle:
@@ -518,91 +557,56 @@ def render_page(status=None, status_class='info', ssid=None, password=''):
 
 
 def start_ap_mode():
-    """Start AP mode from the web UI on Raspberry Pi OS Trixie systems."""
+    """Start AP mode by delegating to the existing project AP script."""
     try:
+        write_ap_mode_marker(True)
         log_nmcli_state('before-start-ap')
-        hostapd_conf = get_hostapd_config_text()
+
         script_lines = [
             '#!/bin/bash',
-            'set -e',
+            'set -x',
             'sleep 1',
             'logger -t wifi_safe_config "Switching wlan0 into AP/config mode"',
             'export DEBIAN_FRONTEND=noninteractive',
-            'systemctl stop NetworkManager >/dev/null 2>&1 || true',
-            'systemctl stop wpa_supplicant >/dev/null 2>&1 || true',
+            'nmcli connection down netplan-wlan0-KavalaVIVA >/dev/null 2>&1 || true',
+            'nmcli connection modify netplan-wlan0-KavalaVIVA connection.autoconnect no >/dev/null 2>&1 || true',
+            'nmcli connection modify tH-monitor-KavalaVIVA connection.autoconnect no >/dev/null 2>&1 || true',
+            'nmcli connection down tH-monitor-KavalaVIVA >/dev/null 2>&1 || true',
+            'nmcli connection modify tH-monitor-VIVACOM123 connection.autoconnect no >/dev/null 2>&1 || true',
+            'pkill -f "NetworkManager" >/dev/null 2>&1 || true',
+            'pkill -f "wpa_supplicant.*wlan0" >/dev/null 2>&1 || true',
+            'nmcli device set wlan0 autoconnect no >/dev/null 2>&1 || true',
             'systemctl stop hostapd >/dev/null 2>&1 || true',
             'systemctl stop dnsmasq >/dev/null 2>&1 || true',
             'pkill -f "hostapd /tmp/hostapd.conf" >/dev/null 2>&1 || true',
             'pkill -f "dnsmasq -C /tmp/dnsmasq.conf" >/dev/null 2>&1 || true',
             'rm -f /var/run/dnsmasq.pid >/dev/null 2>&1 || true',
-            'systemctl unmask hostapd >/dev/null 2>&1 || true',
             'rfkill unblock wifi >/dev/null 2>&1 || true',
-            'ip link set wlan0 down >/dev/null 2>&1 || true',
-            'ip addr flush dev wlan0 >/dev/null 2>&1 || true',
-            'ip link set wlan0 up >/dev/null 2>&1 || true',
-            f'ip addr add {AP_ADDRESS} dev wlan0',
-            'sleep 1',
-            'hostapd -B /tmp/hostapd.conf',
-            'sleep 1',
-            'dnsmasq --conf-file=/tmp/dnsmasq.conf --pid-file=/var/run/dnsmasq.pid',
-            'sleep 2',
+            'chmod +x /home/raspberry/tH-monitor/start_ap.sh >/dev/null 2>&1 || true',
+            'bash /home/raspberry/tH-monitor/start_ap.sh >> /home/raspberry/tH-monitor/wifi_safe_config.log 2>&1',
+            f'cat > {AP_WATCHDOG_SCRIPT} <<\'EOF\'',
+            *build_ap_watchdog_script().rstrip('\n').split('\n'),
+            'EOF',
+            f'chmod +x {AP_WATCHDOG_SCRIPT}',
+            f'pkill -f "{AP_WATCHDOG_SCRIPT}" >/dev/null 2>&1 || true',
+            f'nohup bash {AP_WATCHDOG_SCRIPT} >/dev/null 2>&1 &',
+            'sleep 4',
             'ip addr show wlan0 | logger -t wifi_safe_config',
             'pgrep -a hostapd | logger -t wifi_safe_config',
             'pgrep -a dnsmasq | logger -t wifi_safe_config',
+            'iw dev wlan0 info | logger -t wifi_safe_config',
             f'logger -t wifi_safe_config "AP/config mode started on {AP_ADDRESS}"',
         ]
 
-        ap_bootstrap = [
-            '#!/bin/bash',
-            'cat > /tmp/hostapd.conf <<\'EOF\'',
-            *hostapd_conf.splitlines(),
-            'EOF',
-            'chmod 644 /tmp/hostapd.conf',
-            'cat > /tmp/dnsmasq.conf <<\'EOF\'',
-            'interface=wlan0',
-            'bind-interfaces',
-            'dhcp-range=192.168.4.2,192.168.4.20,255.255.255.0,24h',
-            'domain=wlan',
-            'address=/gw.wlan/192.168.4.1',
-            'EOF',
-            'chmod 644 /tmp/dnsmasq.conf',
-        ]
-
         with open(RUNTIME_SWITCH_SCRIPT, 'w', encoding='utf-8') as handle:
-            handle.write('\n'.join(ap_bootstrap + script_lines) + '\n')
+            handle.write('\n'.join(script_lines) + '\n')
         os.chmod(RUNTIME_SWITCH_SCRIPT, 0o700)
         subprocess.Popen(['bash', RUNTIME_SWITCH_SCRIPT])
         logger.info('Launched background AP mode switch script')
-        return True, 'Started config AP. Reconnect your phone/laptop to SSID tH-Monitor-Config at 192.168.4.1.'
+        return True, f'Started config AP. Reconnect your phone/laptop to SSID {AP_SSID} at {AP_BASE_ADDRESS}.'
     except Exception as exc:
         logger.error('Failed to start AP mode: %s', str(exc))
         return False, f'Failed to start AP mode: {exc}'
-
-
-def get_hostapd_config_text():
-    """Load hostapd config template with sane defaults for Pi Zero/Trixie."""
-    default_text = '\n'.join([
-        'interface=wlan0',
-        'driver=nl80211',
-        f'ssid={AP_SSID}',
-        'channel=1',
-        'hw_mode=g',
-        'ieee80211n=1',
-        'wmm_enabled=1',
-        'macaddr_acl=0',
-        'ignore_broadcast_ssid=0',
-    ])
-
-    path = Path(HOSTAPD_TEMPLATE_FILE)
-    if not path.exists():
-        return default_text
-
-    try:
-        text = path.read_text(encoding='utf-8').strip()
-        return text or default_text
-    except Exception as exc:
-        logger.error('Failed to read hostapd template %s: %s', HOSTAPD_TEMPLATE_FILE, str(exc))
-        return default_text
 
 
 @app.route('/')
