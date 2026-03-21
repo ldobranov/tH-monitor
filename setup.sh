@@ -96,11 +96,25 @@ apt_install () {
   
   # Install Python packages system-wide
   message "Installing Python packages system-wide." "INFO"
-  pip3 install --upgrade pip --break-system-packages
-  pip3 install pigpio-dht --break-system-packages
-  pip3 install influxdb --break-system-packages
-  pip3 install pigpio --break-system-packages
-  pip3 install flask --break-system-packages
+  # Remove any conflicting 'board' library that shadows Adafruit Blinka
+  message "Removing conflicting board library if present." "INFO"
+  if [ -f "/usr/local/lib/python3.11/dist-packages/board.py" ]; then
+    rm -f /usr/local/lib/python3.11/dist-packages/board.py
+  fi
+  if [ -f "/usr/local/lib/python3.12/dist-packages/board.py" ]; then
+    rm -f /usr/local/lib/python3.12/dist-packages/board.py
+  fi
+  if [ -f "/usr/local/lib/python3.13/dist-packages/board.py" ]; then
+    rm -f /usr/local/lib/python3.13/dist-packages/board.py
+  fi
+  
+  # Install Adafruit Blinka (provides correct 'board' module for Raspberry Pi)
+  message "Installing Adafruit Blinka for I2C sensor support." "INFO"
+  pip3 install adafruit-blinka --break-system-packages
+  pip3 install adafruit-circuitpython-ahtx0 --break-system-packages
+  pip3 install smbus2 --break-system-packages
+  pip3 install adafruit-circuitpython-busdevice --break-system-packages
+
 }
 
 # takes a package ($1) as arg
