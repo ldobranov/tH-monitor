@@ -54,9 +54,8 @@ sensor_data = [
 ]
 
 # Display modes - expanded for 4 sensors
-DISPLAY_MODES = ['sensors12', 'sensors34', 'clock', 'sensor1', 'sensor2', 'sensor3', 'sensor4', 'wifi']
+DISPLAY_MODES = ['sensors12', 'sensors34', 'clock', 'sensor1', 'sensor2', 'sensor3', 'sensor4']
 current_mode = 0  # Start with sensor display
-wifi_config_active = False  # Track if WiFi config mode is active
 
 # Lock for thread-safe display updates
 display_lock = threading.Lock()
@@ -228,30 +227,6 @@ def get_wifi_status():
         logging.error(datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + "  -- WiFi status error: " + str(e))
         return 'Error', 'Unknown'
 
-def enter_wifi_config_mode():
-    """Enter WiFi configuration mode - shows instructions on LCD (safe version)"""
-    global current_mode, wifi_config_active
-    
-    wifi_config_active = True
-    
-    # Change to wifi mode (will show config info)
-    current_mode = len(DISPLAY_MODES) - 1  # Last mode is wifi
-    
-    if display is not None:
-        try:
-            display.lcd_display_string("WiFi Config", 1)
-            display.lcd_display_string("Port: 8080", 2)
-            time.sleep(2)
-        except:
-            pass
-    
-    # Start WiFi config service
-    try:
-        subprocess.run(['sudo', 'systemctl', 'start', 'wifi_config.service'], timeout=10)
-        logging.info("WiFi config service started")
-    except Exception as e:
-        logging.error("Failed to start WiFi config service: " + str(e))
-
 def update_display():
     """Update LCD based on current display mode - thread safe"""
     if display is None:
@@ -348,12 +323,6 @@ def update_display():
                     line2 = "---"
                 display.lcd_display_string("{:^16}".format(line1), 1)
                 display.lcd_display_string("{:^16}".format(line2), 2)
-                
-            elif DISPLAY_MODES[current_mode] == 'wifi':
-                # Show WiFi status
-                ip_address, wifi_status = get_wifi_status()
-                display.lcd_display_string("{:^16}".format("WiFi Status"), 1)
-                display.lcd_display_string("{:^16}".format(wifi_status), 2)
                 
         except Exception as e:
             logging.error(datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + "  -- Display update error: " + str(e))
