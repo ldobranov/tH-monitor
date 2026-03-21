@@ -178,7 +178,7 @@ try:
     
     # Button callback function - triggered on EITHER edge (press or release)
     def button_callback(gpio, level, tick):
-        global current_mode, last_button_press_time, button_pressed_time, wifi_config_active
+        global current_mode, last_button_press_time, button_pressed_time
         
         current_time_ms = int(time.time() * 1000)
         
@@ -195,22 +195,15 @@ try:
             if current_time_ms - last_button_press_time < button_debounce_ms:
                 return
             
-            # Check if long press (10 seconds)
-            if press_duration >= LONG_PRESS_DURATION_MS:
-                # Long press - enter WiFi config mode
-                last_button_press_time = current_time_ms
-                logging.info(datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + "  -- LONG BUTTON PRESS - Starting WiFi config mode")
-                enter_wifi_config_mode()
-            else:
-                # Short press - cycle display modes
-                last_button_press_time = current_time_ms
-                # If WiFi config mode is active, stay on wifi mode
-                if wifi_config_active:
-                    current_mode = len(DISPLAY_MODES) - 1
-                else:
-                    current_mode = (current_mode + 1) % len(DISPLAY_MODES)
-                logging.info(datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + "  -- Button pressed, mode: " + DISPLAY_MODES[current_mode])
-                update_display()
+            # Ignore short noise < 20ms
+            if press_duration < MIN_PRESS_DURATION_MS:
+                return
+            
+            # Short press - cycle display modes
+            last_button_press_time = current_time_ms
+            current_mode = (current_mode + 1) % len(DISPLAY_MODES)
+            logging.info(datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + "  -- Button pressed, mode: " + DISPLAY_MODES[current_mode])
+            update_display()
     
     # Set up callback on BOTH edges (rising and falling)
     pi.callback(BUTTON_PIN, pigpio.EITHER_EDGE, button_callback)
