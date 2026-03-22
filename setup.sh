@@ -114,7 +114,7 @@ apt_install () {
   pip3 install adafruit-circuitpython-ahtx0 --break-system-packages
   pip3 install smbus2 --break-system-packages
   pip3 install adafruit-circuitpython-busdevice --break-system-packages
-
+  pip3 install adafruit-blinka adafruit-circuitpython-ahtx0 smbus2 --break-system-packages
 }
 
 # takes a package ($1) as arg
