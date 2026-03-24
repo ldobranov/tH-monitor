@@ -28,7 +28,7 @@ TCA9548A_ADDRESS = 0x70
 # TCA9548A Channel mapping for each sensor (channels 0-7)
 # Update these channels based on how you wired your sensors
 # Sensor 1 is on channel 6 (confirmed working)
-SENSOR_CHANNELS = [0, 1, 2, 3]  # All sensors on channel 6 for now (same sensor)
+SENSOR_CHANNELS = [7, 6, 5, 4]  # All sensors on channel 6 for now (same sensor)
 
 # AHT20 Sensor I2C addresses (all same address, different multiplexer channels)
 # Default AHT20 address is 0x38
@@ -79,6 +79,13 @@ influx_client_lock = threading.Lock()
 # AHT20 sensor objects
 aht_sensors = [None, None, None, None]
 
+# Track which sensors have been initialized (to avoid repeated init attempts)
+sensor_initialized = [False, False, False, False]
+
+# Hot-plug detection interval (check for new sensors every 60 seconds)
+last_hotplug_check = time.time()
+hotplug_check_interval = 60
+
 # FIX #7: Initialize pi to None before try block so signal_handler never gets NameError
 pi = None
 
@@ -113,7 +120,7 @@ except Exception as e:
 
 def initialize_aht_sensors():
     """Initialize AHT20 sensors on different TCA9548A channels"""
-    global aht_sensors
+    global aht_sensors, sensor_initialized
     
     # First, verify TCA9548A is reachable with retry
     tca_found = False
@@ -163,6 +170,7 @@ def initialize_aht_sensors():
             # Quick test read to verify sensor is present
             _ = aht_sensors[i].temperature
             logging.warning(f"AHT20 sensor {i+1} initialized on channel {channel} at address 0x{addr:02X}")
+            sensor_initialized[i] = True
         except Exception as e:
             logging.warning(f"AHT20 sensor {i+1} NOT found on channel {channel} at address 0x{addr:02X}: {e}")
             # Close i2c handle if sensor init failed
@@ -173,8 +181,46 @@ def initialize_aht_sensors():
                     pass
             aht_sensors[i] = None
 
-# Initialize sensors
+def recheck_sensors():
+    """Re-check for sensors that weren't found during initial initialization (hot-plug support)"""
+    global aht_sensors, sensor_initialized
+    
+    logging.info("Checking for newly connected sensors...")
+    
+    for i, addr in enumerate(SENSOR_I2C_ADDRESSES):
+        # Skip if sensor already initialized and working
+        if sensor_initialized[i] and aht_sensors[i] is not None:
+            continue
+        
+        channel = SENSOR_CHANNELS[i] if i < len(SENSOR_CHANNELS) else i
+        
+        try:
+            # Select the channel on TCA9548A
+            if not select_tca_channel(channel, retries=3):
+                logging.debug(f"Hot-plug: AHT20 sensor {i+1} failed to select channel {channel}")
+                continue
+            
+            time.sleep(0.2)
+            
+            # Create AHT20 sensor object
+            i2c = board.I2C()
+            aht_sensors[i] = adafruit_ahtx0.AHTx0(i2c, address=addr)
+            
+            # Quick test read to verify sensor is present
+            _ = aht_sensors[i].temperature
+            
+            sensor_initialized[i] = True
+            logging.warning(f"NEW AHT20 sensor {i+1} detected on channel {channel} at address 0x{addr:02X}")
+            
+        except Exception as e:
+            # Sensor not found on this channel - will try again later
+            logging.debug(f"Hot-plug check sensor {i+1}: {e}")
+            aht_sensors[i] = None
+            sensor_initialized[i] = False
+
+# Initialize sensors (run twice for better detection on boot)
 initialize_aht_sensors()
+recheck_sensors()
 
 # Initialize pigpio for button with callback
 try:
@@ -254,8 +300,126 @@ def get_wifi_status():
         logging.error(datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + "  -- WiFi status error: " + str(e))
         return 'Error', 'Unknown'
 
+def get_cpu_usage():
+    """Get CPU usage percentage"""
+    try:
+        # Read from /proc/stat which contains CPU time statistics
+        with open('/proc/stat', 'r') as f:
+            line = f.readline()
+            # Line format: cpu  user nice system idle iowait irq softirq steal guest guest_nice
+            parts = line.split()
+            if parts[0] == 'cpu':
+                # Calculate total and idle times
+                times = [int(x) for x in parts[1:]]
+                total = sum(times)
+                idle = times[3]  # idle is the 4th field
+                
+                # Use a simple moving average - store previous values
+                if not hasattr(get_cpu_usage, 'prev_total') or not hasattr(get_cpu_usage, 'prev_idle'):
+                    get_cpu_usage.prev_total = total
+                    get_cpu_usage.prev_idle = idle
+                    return 0.0  # First call, return 0
+                
+                prev_total = get_cpu_usage.prev_total
+                prev_idle = get_cpu_usage.prev_idle
+                
+                # Calculate delta
+                delta_total = total - prev_total
+                delta_idle = idle - prev_idle
+                
+                # Store current values for next call
+                get_cpu_usage.prev_total = total
+                get_cpu_usage.prev_idle = idle
+                
+                if delta_total == 0:
+                    return 0.0
+                
+                # Calculate CPU usage as percentage
+                cpu_usage = 100.0 * (delta_total - delta_idle) / delta_total
+                return round(cpu_usage, 1)
+        return 0.0
+    except Exception as e:
+        logging.debug(f"CPU usage error: {e}")
+        return 0.0
+
+def get_cpu_temp():
+    """Get CPU temperature in Celsius"""
+    try:
+        # Try to read from vcgencmd (Raspberry Pi specific)
+        result = subprocess.run(['vcgencmd', 'measure_temp'], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            # Output format: temp=42.3'C
+            temp_str = result.stdout.split('=')[1].split("'C")[0]
+            return float(temp_str)
+    except Exception as e:
+        logging.debug(f"vcgencmd temp error: {e}")
+    
+    try:
+        # Fallback: try to read from thermal_zone
+        for thermal_path in ['/sys/class/thermal/thermal_zone0/temp', '/sys/class/hwmon/hwmon0/temp1']:
+            try:
+                with open(thermal_path, 'r') as f:
+                    temp_millidegrees = int(f.read().strip())
+                    return temp_millidegrees / 1000.0
+            except Exception:
+                continue
+    except Exception as e:
+        logging.debug(f"Thermal zone temp error: {e}")
+    
+    return 0.0
+
+def get_ram_usage():
+    """Get RAM usage percentage"""
+    try:
+        with open('/proc/meminfo', 'r') as f:
+            mem_info = {}
+            for line in f:
+                parts = line.split(':')
+                if len(parts) == 2:
+                    key = parts[0].strip()
+                    value = parts[1].strip().split()[0]  # Get first value (in kB)
+                    mem_info[key] = int(value)
+            
+            # Calculate memory usage
+            total = mem_info.get('MemTotal', 0)
+            available = mem_info.get('MemAvailable', 0)
+            
+            if total > 0:
+                used = total - available
+                ram_percent = 100.0 * used / total
+                return round(ram_percent, 1)
+        return 0.0
+    except Exception as e:
+        logging.debug(f"RAM usage error: {e}")
+        return 0.0
+
+def get_voltages():
+    """Get system voltages in Volts"""
+    voltages = {}
+    
+    try:
+        # Get various voltage readings using vcgencmd
+        voltage_types = ['core', 'sdram_c', 'sdram_i', 'sdram_p']
+        
+        for vtype in voltage_types:
+            try:
+                result = subprocess.run(['vcgencmd', 'measure_volts', vtype], 
+                                       capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    # Output format: volt=x.xxV
+                    volt_str = result.stdout.split('=')[1].split('V')[0]
+                    voltages[vtype] = round(float(volt_str), 3)
+            except Exception as e:
+                logging.debug(f"Voltage {vtype} error: {e}")
+                voltages[vtype] = 0.0
+    except Exception as e:
+        logging.debug(f"Voltages error: {e}")
+    
+    return voltages
+
 def update_display():
     """Update LCD based on current display mode - thread safe"""
+    global display
     if display is None:
         return
     
@@ -347,10 +511,25 @@ def update_display():
                 
         except Exception as e:
             logging.error(datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + "  -- Display update error: " + str(e))
+            # Try to reinitialize display on persistent I/O errors
+            error_str = str(e)
+            if ("Input/output error" in error_str or "Errno 5" in error_str or 
+                "Remote I/O error" in error_str or "Errno 121" in error_str):
+                # Always retry on I/O errors (no limit to keep LCD working)
+                lcd_reinit_count += 1
+                time.sleep(1)  # Wait before retry to let I2C bus settle
+                try:
+                    display = drivers.Lcd()
+                    logging.warning("LCD reinitialized after I/O error")
+                except Exception as reinit_error:
+                    logging.error("Failed to reinitialize LCD: " + str(reinit_error))
+                    display = None
 
 def read_sensors():
     """Background thread to read AHT20 sensors continuously"""
     global sensor_data
+    consecutive_errors = [0, 0, 0, 0]  # Track consecutive errors per sensor
+    max_consecutive_errors = 3  # Mark sensor as disconnected after this many errors
     
     while running:
         # FIX #11: Wrap entire loop body to prevent silent thread death
@@ -362,6 +541,7 @@ def read_sensors():
                         channel = SENSOR_CHANNELS[i] if i < len(SENSOR_CHANNELS) else i
                         if not select_tca_channel(channel):
                             logging.debug(f"AHT20 sensor {i+1}: failed to select channel {channel}")
+                            consecutive_errors[i] += 1
                             with sensor_lock:
                                 sensor_data[i]['temp'] = None
                                 sensor_data[i]['humidity'] = None
@@ -373,6 +553,9 @@ def read_sensors():
                         temperature = sensor.temperature
                         humidity = sensor.relative_humidity
                         
+                        # Reset error counter on successful read
+                        consecutive_errors[i] = 0
+                        
                         with sensor_lock:
                             sensor_data[i]['temp'] = temperature
                             sensor_data[i]['humidity'] = humidity
@@ -380,10 +563,20 @@ def read_sensors():
                         logging.info(f"AHT20 sensor {i+1} (ch {channel}) read: {temperature:.1f}C, {humidity:.1f}%")
                     except Exception as e:
                         logging.debug(f"AHT20 sensor {i+1} error: {e}")
+                        consecutive_errors[i] += 1
+                        
+                        # If too many consecutive errors, mark sensor as disconnected
+                        if consecutive_errors[i] >= max_consecutive_errors:
+                            logging.warning(f"AHT20 sensor {i+1} disconnected (power loss detected)")
+                            aht_sensors[i] = None
+                            sensor_initialized[i] = False
+                        
                         with sensor_lock:
                             sensor_data[i]['temp'] = None
                             sensor_data[i]['humidity'] = None
                 else:
+                    # Reset error counter for disconnected sensors
+                    consecutive_errors[i] = 0
                     with sensor_lock:
                         sensor_data[i]['temp'] = None
                         sensor_data[i]['humidity'] = None
@@ -431,7 +624,23 @@ def save_to_influxdb():
             if s['humidity'] is not None:
                 fields[f'humidity{i+1}'] = s['humidity']
         
+        # Add system metrics: CPU usage, CPU temperature, RAM usage
+        cpu_usage = get_cpu_usage()
+        cpu_temp = get_cpu_temp()
+        ram_usage = get_ram_usage()
+        voltages = get_voltages()
+        
+        fields['cpu_usage'] = cpu_usage
+        fields['cpu_temp'] = cpu_temp
+        fields['ram_usage'] = ram_usage
+        
+        # Add voltage readings
+        if voltages:
+            for vkey, vval in voltages.items():
+                fields[f'volt_{vkey}'] = vval
+        
         if fields:  # Only save if we have at least one field
+            logging.info(f"Saving to db: {fields}")  # Debug log to verify what's being saved
             influx_metric = [{
                  'measurement': 'TemperatureSensor',
                  'time': current_time.strftime('%Y-%m-%dT%H:%M:%SZ'),
@@ -509,6 +718,11 @@ while running:
     if current_time - last_display_update >= display_update_interval:
         update_display()
         last_display_update = current_time
+
+    # Hot-plug detection: check for newly connected sensors
+    if current_time - last_hotplug_check >= hotplug_check_interval:
+        recheck_sensors()
+        last_hotplug_check = current_time
 
     # Saving data to InfluxDB
     try:
