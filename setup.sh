@@ -108,16 +108,18 @@ apt_install () {
     rm -f /usr/local/lib/python3.13/dist-packages/board.py
   fi
   
-  # Install Adafruit Blinka (provides correct 'board' module for Raspberry Pi)
-  message "Installing Adafruit Blinka for I2C sensor support." "INFO"
-  pip3 install adafruit-blinka --break-system-packages
-  pip3 install adafruit-circuitpython-ahtx0 --break-system-packages
-  pip3 install smbus2 --break-system-packages
-  pip3 install adafruit-circuitpython-busdevice --break-system-packages
-  pip3 install adafruit-blinka adafruit-circuitpython-ahtx0 smbus2 --break-system-packages
-  pip3 install adafruit-circuitpython-bmp280 --break-system-packages
-  # LCD service driver (replaces the old RPi.GPIO-based drivers/i2c_dev.py)
-  pip3 install RPLCD flask --break-system-packages
+   # Install Adafruit Blinka (provides correct 'board' module for Raspberry Pi)
+   message "Installing Adafruit Blinka for I2C sensor support." "INFO"
+   pip3 install adafruit-blinka --break-system-packages
+   pip3 install adafruit-circuitpython-ahtx0 --break-system-packages
+   pip3 install smbus2 --break-system-packages
+   pip3 install adafruit-circuitpython-busdevice --break-system-packages
+   pip3 install adafruit-blinka adafruit-circuitpython-ahtx0 smbus2 --break-system-packages
+   pip3 install adafruit-circuitpython-bmp280 --break-system-packages
+   # Install InfluxDB Python client
+   pip3 install influxdb --break-system-packages
+   # LCD service driver (replaces the old RPi.GPIO-based drivers/i2c_dev.py)
+   pip3 install RPLCD flask --break-system-packages
 }
 
 # takes a package ($1) as arg
