@@ -1,0 +1,20 @@
+[Unit]
+Description=tH-Monitor LCD Display Service
+Documentation=file:///home/raspberry/tH-monitor/plans/lcd_sharing_plan.md
+After=local-fs.target
+# Ensure lcd.service is ready before the consumers start
+Before=monitor.service wifi-manager.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/raspberry/tH-monitor
+ExecStart=/usr/bin/python3 /home/raspberry/tH-monitor/lcd_service.py
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
