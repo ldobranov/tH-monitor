@@ -1,0 +1,22 @@
+[Unit]
+Description=tH-Monitor WiFi Manager Service
+After=network.target lcd.service
+Wants=network.target lcd.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/raspberry/tH-monitor
+ExecStart=/usr/bin/python3 /home/raspberry/tH-monitor/wifi_manager.py
+Restart=on-failure
+RestartSec=30
+StartLimitInterval=300
+StartLimitBurst=5
+StandardOutput=journal
+StandardError=journal
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
