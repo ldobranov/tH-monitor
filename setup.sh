@@ -64,8 +64,8 @@ apt_install () {
     message "Unable to install pkg 'python3-smbus'." "WARNING"
   fi
 
-  message "Installing the 'pigpio' pkg." "INFO"
-  if ! apt install pigpio -y; then
+  message "Installing the 'pigpio' and 'python3-pigpio' pkgs." "INFO"
+  if ! apt install pigpio python3-pigpio -y; then
     message "Unable to install pkg 'pigpio'." "WARNING"
   fi
   message "Installing WiFi AP packages 'hostapd' and 'dnsmasq'." "INFO"
@@ -115,6 +115,9 @@ apt_install () {
   pip3 install smbus2 --break-system-packages
   pip3 install adafruit-circuitpython-busdevice --break-system-packages
   pip3 install adafruit-blinka adafruit-circuitpython-ahtx0 smbus2 --break-system-packages
+  pip3 install adafruit-circuitpython-bmp280 --break-system-packages
+  # LCD service driver (replaces the old RPi.GPIO-based drivers/i2c_dev.py)
+  pip3 install RPLCD flask --break-system-packages
 }
 
 # takes a package ($1) as arg
@@ -233,6 +236,14 @@ if modules /etc/modprobe.d/raspi-blacklist.conf "$LCD_CONFIG_DIR"/raspi-blacklis
   message "Updated required modules in '/etc/modprobe.d/raspi-blacklist.conf.'" 'INFO'
 fi
 
+message "Setup LCD service" "INFO"
+if ! cp lcd.service /etc/systemd/system/; then
+  message "Unable to copy lcd.service." "WARNING"
+fi
+message "Enable LCD service" "INFO"
+if ! systemctl enable lcd.service; then
+  message "Unable to enable service 'lcd.service'." "WARNING"
+fi
 message "Setup tH_monitor service" "INFO"
 if ! cp monitor.service /etc/systemd/system/; then
   message "Unable to set service 'tH-mointor.service'." "WARNING"
@@ -254,13 +265,13 @@ if ! systemctl enable pigpiod.service; then
   message "Unable to enable service 'pigpiod.service'." "WARNING"
 fi
 
-message "Setup WiFi configuration service" "INFO"
-if ! cp wifi_config.service /etc/systemd/system/; then
-  message "Unable to copy wifi_config.service." "WARNING"
+message "Setup WiFi manager service" "INFO"
+if ! cp wifi-manager.service /etc/systemd/system/; then
+  message "Unable to copy wifi-manager.service." "WARNING"
 fi
-message "Enable WiFi configuration service" "INFO"
-if ! systemctl enable wifi_config.service; then
-  message "Unable to enable service 'wifi_config.service'." "WARNING"
+message "Enable WiFi manager service" "INFO"
+if ! systemctl enable wifi-manager.service; then
+  message "Unable to enable service 'wifi-manager.service'." "WARNING"
 fi
 
 message "Enabling I2C on boot." 'INFO'; i2c_boot_config
