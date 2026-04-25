@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>tH-Monitor WiFi Manager</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="container">
+
+    <h1>📶 tH-Monitor WiFi Manager</h1>
+
+    {% if status %}
+    <div class="status {{ status_class }}">{{ status }}</div>
+    {% endif %}
+
+    <div class="current-status">
+        <strong>Mode:</strong>
+        <span class="mode-indicator mode-{{ mode_class }}">{{ mode }}</span><br>
+        <strong>Current Network:</strong> {{ current_ssid }}<br>
+        <strong>IP Address:</strong> {{ ip_address }}<br>
+        <strong>Service Status:</strong> {{ service_status }}
+    </div>
+
+    <!-- ── 1. Scan ─────────────────────────────────────────── -->
+    <div class="panel">
+        <h2>1. Scan nearby WiFi networks</h2>
+        <form method="POST" action="/scan">
+            <button class="secondary" type="submit">Scan for Networks</button>
+        </form>
+        <p class="hint">Refreshes the visible SSID list without attempting to connect.</p>
+
+        {% if networks %}
+        <ul class="network-list">
+            {% for network in networks %}
+            <li>
+                <div>
+                    <strong>{{ network.ssid }}</strong><br>
+                    <span class="network-meta">Signal: {{ network.signal }} | Security: {{ network.security }}</span>
+                </div>
+                <form method="POST" action="/select">
+                    <input type="hidden" name="ssid" value="{{ network.ssid }}">
+                    <button class="secondary small-button" type="submit">Use</button>
+                </form>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="hint">No scan results yet.</p>
+        {% endif %}
+    </div>
+
+    <!-- ── 2. Credentials ─────────────────────────────────── -->
+    <div class="panel">
+        <h2>2. Enter WiFi credentials</h2>
+        <form method="POST" action="/save">
+            <label for="ssid">WiFi Network Name (SSID):</label>
+            <input type="text" id="ssid" name="ssid" value="{{ ssid }}" required>
+
+            <label for="password">WiFi Password:</label>
+            <input type="password" id="password" name="password" value="{{ password }}" placeholder="Enter password">
+
+            <button class="primary" type="submit">Save Credentials</button>
+        </form>
+        <p class="hint">Saves credentials but does not switch networks yet.</p>
+    </div>
+
+    <!-- ── 3. Apply ───────────────────────────────────────── -->
+    <div class="panel">
+        <h2>3. Apply and switch to saved WiFi</h2>
+        <form method="POST" action="/apply">
+            <button class="warning" type="submit">Apply Saved WiFi and Switch to Client Mode</button>
+        </form>
+        <p class="hint">
+            After a successful switch this page will stop because the Pi joins the new router as a client.
+        </p>
+    </div>
+
+    <!-- ── 4. Reset to AP ─────────────────────────────────── -->
+    <div class="panel">
+        <h2>4. Reset to AP Mode</h2>
+        <form method="POST" action="/reset_ap">
+            <button class="danger" type="submit">Reset to AP Mode</button>
+        </form>
+        <p class="hint">Switches back to AP mode for reconfiguration. You'll need to reconnect to the AP network.</p>
+    </div>
+
+    <!-- ── 5. Watchdog ───────────────────────────────────── -->
+    <div class="panel">
+        <h2>5. Auto-Reconnect Watchdog</h2>
+        <p class="hint">
+            Status: <strong>{{ watchdog_status }}</strong><br>
+            Checks every 30 s. After 3 failures: tries to reconnect (×2), then falls back to AP mode.
+        </p>
+        <form method="POST" action="/watchdog_toggle">
+            <button class="{{ 'danger' if watchdog_enabled else 'primary' }}" type="submit">
+                {{ 'Disable Watchdog' if watchdog_enabled else 'Enable Watchdog' }}
+            </button>
+        </form>
+    </div>
+
+</div>
+</body>
+</html>
