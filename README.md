@@ -28,6 +28,7 @@ This repository contains all the code for interfacing with a **16x2 I2C LCD**, *
    ```
    The installation script will:
    - Install required packages (i2c-tools, python-smbus, python3-smbus, pigpio, hostapd, dnsmasq, influxdb, grafana, etc.)
+   - Install Python packages including adafruit-blinka, adafruit-circuitpython-ahtx0, adafruit-circuitpython-bmp280, influxdb-client, RPLCD, and flask
    - Set up the LCD service
    - Set up the temperature/humidity monitoring service
    - Set up the WiFi manager service (for creating an access point)
@@ -53,11 +54,13 @@ This repository contains all the code for interfacing with a **16x2 I2C LCD**, *
    ```
    Then in the InfluxDB CLI:
    ```
-   CREATE USER "admin" WITH PASSWORD 'pass' WITH ALL PRIVILEGES
+   CREATE USER "admin" WITH PASSWORD 'your_secure_password' WITH ALL PRIVILEGES
    SHOW users
    quit
    ```
-   Replace `'pass'` with a strong password of your choice.
+   Replace `'your_secure_password'` with a strong password of your choice.
+   
+   The system will automatically use these credentials by storing them in a `secretstring` file in the application directory.
 
 7. **Create the database** for temperature data:
    ```bash
@@ -89,10 +92,31 @@ This repository contains all the code for interfacing with a **16x2 I2C LCD**, *
 
 ## Configuration Files
 
-- LCD configuration: `configs/` directory
-- Grafana provisioning: `grafana.json` (for dashboard provisioning)
-- WiFi manager HTML template: `templates/wifi_manager.html`
-- WiFi manager CSS: `static/style.css`
+- **LCD configuration** (`configs/` directory):
+  - `modules`: Specifies kernel modules to load at boot time. Contains:
+    - `snd-bcm2835`: Audio module for Raspberry Pi
+    - `i2c-dev`: I2C device interface module for LCD communication
+  - `raspi-blacklist.conf`: Blacklists conflicting modules to prevent issues:
+    - `spi-bcm2708`: SPI interface (blacklisted as many users don't need it)
+    - `#blacklist i2c-bcm2708`: I2C interface (commented out to enable I2C for LCD)
+    - `snd-soc-pcm512x`: Audio codec module (blacklisted)
+    - `snd-soc-wm8804`: Audio codec module (blacklisted)
+
+- **Grafana provisioning** (`grafana.json`): Dashboard provisioning file for automatic Grafana setup with InfluxDB data source and dashboards
+
+- **WiFi manager interface**:
+  - `templates/wifi_manager.html`: HTML template for the WiFi manager web interface that allows:
+    - Scanning for nearby WiFi networks
+    - Entering and saving WiFi credentials
+    - Applying saved credentials to switch to client mode
+    - Resetting to access point (AP) mode for reconfiguration
+    - Enabling/disabling auto-reconnect watchdog
+  - `static/style.css`: CSS stylesheet for the WiFi manager web interface providing:
+    - Responsive design with container layout
+    - Status banners (success, error, warning, info)
+    - Network list styling
+    - Form elements and buttons
+    - Mode indicators (AP mode, client mode)
 
 ## Troubleshooting
 
