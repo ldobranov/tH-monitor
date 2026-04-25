@@ -26,6 +26,18 @@
   "panels": [
     {
       "datasource": null,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 123144,
+      "title": "Row title",
+      "type": "row"
+    },
+    {
+      "datasource": null,
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -85,9 +97,16 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "T1"
+              "options": "Small 1"
             },
             "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              },
               {
                 "id": "custom.axisSoftMin",
                 "value": 10
@@ -97,11 +116,8 @@
                 "value": 40
               },
               {
-                "id": "color",
-                "value": {
-                  "fixedColor": "yellow",
-                  "mode": "fixed"
-                }
+                "id": "unit",
+                "value": "celsius"
               },
               {
                 "id": "displayName",
@@ -112,7 +128,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "H1"
+              "options": "Small 2"
             },
             "properties": [
               {
@@ -127,19 +143,19 @@
                 "value": "humidity"
               },
               {
-                "id": "displayName",
-                "value": "Small"
-              },
-              {
                 "id": "custom.axisLabel",
                 "value": "Humidity"
+              },
+              {
+                "id": "displayName",
+                "value": "Small"
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "T2"
+              "options": "Large 1"
             },
             "properties": [
               {
@@ -150,6 +166,10 @@
                 }
               },
               {
+                "id": "unit",
+                "value": "celsius"
+              },
+              {
                 "id": "displayName",
                 "value": "Large"
               }
@@ -158,7 +178,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "H2"
+              "options": "Large 2"
             },
             "properties": [
               {
@@ -181,15 +201,19 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "T3"
+              "options": "New 1"
             },
             "properties": [
               {
                 "id": "color",
                 "value": {
-                  "fixedColor": "super-light-red",
+                  "fixedColor": "super-light-orange",
                   "mode": "fixed"
                 }
+              },
+              {
+                "id": "unit",
+                "value": "celsius"
               },
               {
                 "id": "displayName",
@@ -200,13 +224,13 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "H3"
+              "options": "New 2"
             },
             "properties": [
               {
                 "id": "color",
                 "value": {
-                  "fixedColor": "super-light-green",
+                  "fixedColor": "super-light-blue",
                   "mode": "fixed"
                 }
               },
@@ -223,15 +247,19 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "T4"
+              "options": "Room 1"
             },
             "properties": [
               {
                 "id": "color",
                 "value": {
-                  "fixedColor": "semi-dark-red",
+                  "fixedColor": "super-light-yellow",
                   "mode": "fixed"
                 }
+              },
+              {
+                "id": "unit",
+                "value": "celsius"
               },
               {
                 "id": "displayName",
@@ -242,13 +270,13 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "H4"
+              "options": "Room 2"
             },
             "properties": [
               {
                 "id": "color",
                 "value": {
-                  "fixedColor": "semi-dark-green",
+                  "fixedColor": "super-light-purple",
                   "mode": "fixed"
                 }
               },
@@ -268,22 +296,23 @@
         "h": 15,
         "w": 24,
         "x": 0,
-        "y": 0
+        "y": 1
       },
       "id": 123134,
       "options": {
         "legend": {
-          "calcs": [],
+          "calcs": [
+            "mean"
+          ],
           "displayMode": "list",
           "placement": "bottom"
         },
         "tooltip": {
-          "mode": "single"
+          "mode": "multi"
         }
       },
       "targets": [
         {
-          "alias": "T1",
           "groupBy": [
             {
               "params": [
@@ -301,8 +330,10 @@
           "measurement": "TemperatureSensor",
           "orderByTime": "ASC",
           "policy": "default",
-          "refId": "t1",
-          "resultFormat": "time_series",
+          "query": "SELECT mean(\"temperature1\") AS \"Small t\", mean(\"humidity1\") AS \"Small H\", mean(\"temperature2\") AS \"Large t\", mean(\"humidity2\") AS \"Large H\", mean(\"temperature3\") AS \"New t\", mean(\"humidity3\") AS \"New H\", mean(\"temperature4\") AS \"Room t\", mean(\"humidity4\") AS \"Room H\" FROM \"TemperatureSensor_5m\" WHERE $timeFilter GROUP BY time($__interval) fill(null)",
+          "rawQuery": false,
+          "refId": "Query",
+          "resultFormat": "table",
           "select": [
             [
               {
@@ -314,34 +345,14 @@
               {
                 "params": [],
                 "type": "mean"
+              },
+              {
+                "params": [
+                  "Small"
+                ],
+                "type": "alias"
               }
-            ]
-          ],
-          "tags": []
-        },
-        {
-          "alias": "H1",
-          "groupBy": [
-            {
-              "params": [
-                "$__interval"
-              ],
-              "type": "time"
-            },
-            {
-              "params": [
-                "null"
-              ],
-              "type": "fill"
-            }
-          ],
-          "hide": false,
-          "measurement": "TemperatureSensor",
-          "orderByTime": "ASC",
-          "policy": "default",
-          "refId": "h1",
-          "resultFormat": "time_series",
-          "select": [
+            ],
             [
               {
                 "params": [
@@ -352,34 +363,14 @@
               {
                 "params": [],
                 "type": "mean"
+              },
+              {
+                "params": [
+                  "Small"
+                ],
+                "type": "alias"
               }
-            ]
-          ],
-          "tags": []
-        },
-        {
-          "alias": "T2",
-          "groupBy": [
-            {
-              "params": [
-                "$__interval"
-              ],
-              "type": "time"
-            },
-            {
-              "params": [
-                "null"
-              ],
-              "type": "fill"
-            }
-          ],
-          "hide": false,
-          "measurement": "TemperatureSensor",
-          "orderByTime": "ASC",
-          "policy": "default",
-          "refId": "t2",
-          "resultFormat": "time_series",
-          "select": [
+            ],
             [
               {
                 "params": [
@@ -390,34 +381,14 @@
               {
                 "params": [],
                 "type": "mean"
+              },
+              {
+                "params": [
+                  "Large"
+                ],
+                "type": "alias"
               }
-            ]
-          ],
-          "tags": []
-        },
-        {
-          "alias": "H2",
-          "groupBy": [
-            {
-              "params": [
-                "$__interval"
-              ],
-              "type": "time"
-            },
-            {
-              "params": [
-                "null"
-              ],
-              "type": "fill"
-            }
-          ],
-          "hide": false,
-          "measurement": "TemperatureSensor",
-          "orderByTime": "ASC",
-          "policy": "default",
-          "refId": "h2",
-          "resultFormat": "time_series",
-          "select": [
+            ],
             [
               {
                 "params": [
@@ -428,34 +399,14 @@
               {
                 "params": [],
                 "type": "mean"
+              },
+              {
+                "params": [
+                  "Large"
+                ],
+                "type": "alias"
               }
-            ]
-          ],
-          "tags": []
-        },
-        {
-          "alias": "T3",
-          "groupBy": [
-            {
-              "params": [
-                "$__interval"
-              ],
-              "type": "time"
-            },
-            {
-              "params": [
-                "null"
-              ],
-              "type": "fill"
-            }
-          ],
-          "hide": false,
-          "measurement": "TemperatureSensor",
-          "orderByTime": "ASC",
-          "policy": "default",
-          "refId": "t3",
-          "resultFormat": "time_series",
-          "select": [
+            ],
             [
               {
                 "params": [
@@ -466,34 +417,14 @@
               {
                 "params": [],
                 "type": "mean"
+              },
+              {
+                "params": [
+                  "New"
+                ],
+                "type": "alias"
               }
-            ]
-          ],
-          "tags": []
-        },
-        {
-          "alias": "H3",
-          "groupBy": [
-            {
-              "params": [
-                "$__interval"
-              ],
-              "type": "time"
-            },
-            {
-              "params": [
-                "null"
-              ],
-              "type": "fill"
-            }
-          ],
-          "hide": false,
-          "measurement": "TemperatureSensor",
-          "orderByTime": "ASC",
-          "policy": "default",
-          "refId": "h3",
-          "resultFormat": "time_series",
-          "select": [
+            ],
             [
               {
                 "params": [
@@ -504,34 +435,14 @@
               {
                 "params": [],
                 "type": "mean"
+              },
+              {
+                "params": [
+                  "New"
+                ],
+                "type": "alias"
               }
-            ]
-          ],
-          "tags": []
-        },
-        {
-          "alias": "T4",
-          "groupBy": [
-            {
-              "params": [
-                "$__interval"
-              ],
-              "type": "time"
-            },
-            {
-              "params": [
-                "null"
-              ],
-              "type": "fill"
-            }
-          ],
-          "hide": false,
-          "measurement": "TemperatureSensor",
-          "orderByTime": "ASC",
-          "policy": "default",
-          "refId": "t4",
-          "resultFormat": "time_series",
-          "select": [
+            ],
             [
               {
                 "params": [
@@ -542,34 +453,14 @@
               {
                 "params": [],
                 "type": "mean"
+              },
+              {
+                "params": [
+                  "Room"
+                ],
+                "type": "alias"
               }
-            ]
-          ],
-          "tags": []
-        },
-        {
-          "alias": "H4",
-          "groupBy": [
-            {
-              "params": [
-                "$__interval"
-              ],
-              "type": "time"
-            },
-            {
-              "params": [
-                "null"
-              ],
-              "type": "fill"
-            }
-          ],
-          "hide": false,
-          "measurement": "TemperatureSensor",
-          "orderByTime": "ASC",
-          "policy": "default",
-          "refId": "h4",
-          "resultFormat": "time_series",
-          "select": [
+            ],
             [
               {
                 "params": [
@@ -580,6 +471,12 @@
               {
                 "params": [],
                 "type": "mean"
+              },
+              {
+                "params": [
+                  "Room"
+                ],
+                "type": "alias"
               }
             ]
           ],
@@ -724,7 +621,7 @@
         "h": 5,
         "w": 6,
         "x": 0,
-        "y": 15
+        "y": 16
       },
       "id": 123129,
       "options": {
@@ -737,21 +634,18 @@
         },
         "showThresholdLabels": true,
         "showThresholdMarkers": true,
-        "text": {
-          "titleSize": 14,
-          "valueSize": 14
-        }
+        "text": {}
       },
       "pluginVersion": "8.1.8",
       "targets": [
         {
           "alias": "Temperature",
           "groupBy": [],
-          "measurement": "TemperatureSensor",
+          "measurement": "TemperatureSensor_5m",
           "orderByTime": "ASC",
           "policy": "default",
-          "refId": "A",
-          "resultFormat": "time_series",
+          "refId": "Query",
+          "resultFormat": "table",
           "select": [
             [
               {
@@ -759,34 +653,41 @@
                   "temperature1"
                 ],
                 "type": "field"
+              },
+              {
+                "params": [],
+                "type": "last"
+              },
+              {
+                "params": [
+                  "Temperature"
+                ],
+                "type": "alias"
               }
-            ]
-          ],
-          "tags": []
-        },
-        {
-          "alias": "Humidity",
-          "groupBy": [],
-          "hide": false,
-          "measurement": "TemperatureSensor",
-          "orderByTime": "ASC",
-          "policy": "default",
-          "refId": "B",
-          "resultFormat": "time_series",
-          "select": [
+            ],
             [
               {
                 "params": [
                   "humidity1"
                 ],
                 "type": "field"
+              },
+              {
+                "params": [],
+                "type": "last"
+              },
+              {
+                "params": [
+                  "Humidity"
+                ],
+                "type": "alias"
               }
             ]
           ],
           "tags": []
         }
       ],
-      "title": "Sensor 1 - Small",
+      "title": "Small",
       "type": "gauge"
     },
     {
@@ -924,9 +825,9 @@
         "h": 5,
         "w": 6,
         "x": 6,
-        "y": 15
+        "y": 16
       },
-      "id": 123135,
+      "id": 123140,
       "options": {
         "reduceOptions": {
           "calcs": [
@@ -937,21 +838,18 @@
         },
         "showThresholdLabels": true,
         "showThresholdMarkers": true,
-        "text": {
-          "titleSize": 14,
-          "valueSize": 14
-        }
+        "text": {}
       },
       "pluginVersion": "8.1.8",
       "targets": [
         {
           "alias": "Temperature",
           "groupBy": [],
-          "measurement": "TemperatureSensor",
+          "measurement": "TemperatureSensor_5m",
           "orderByTime": "ASC",
           "policy": "default",
-          "refId": "A",
-          "resultFormat": "time_series",
+          "refId": "Query",
+          "resultFormat": "table",
           "select": [
             [
               {
@@ -959,34 +857,41 @@
                   "temperature2"
                 ],
                 "type": "field"
+              },
+              {
+                "params": [],
+                "type": "last"
+              },
+              {
+                "params": [
+                  "Temperature"
+                ],
+                "type": "alias"
               }
-            ]
-          ],
-          "tags": []
-        },
-        {
-          "alias": "Humidity",
-          "groupBy": [],
-          "hide": false,
-          "measurement": "TemperatureSensor",
-          "orderByTime": "ASC",
-          "policy": "default",
-          "refId": "B",
-          "resultFormat": "time_series",
-          "select": [
+            ],
             [
               {
                 "params": [
                   "humidity2"
                 ],
                 "type": "field"
+              },
+              {
+                "params": [],
+                "type": "last"
+              },
+              {
+                "params": [
+                  "Humidity"
+                ],
+                "type": "alias"
               }
             ]
           ],
           "tags": []
         }
       ],
-      "title": "Sensor 2 - Large",
+      "title": "Large",
       "type": "gauge"
     },
     {
@@ -1124,9 +1029,9 @@
         "h": 5,
         "w": 6,
         "x": 12,
-        "y": 15
+        "y": 16
       },
-      "id": 123136,
+      "id": 123141,
       "options": {
         "reduceOptions": {
           "calcs": [
@@ -1137,21 +1042,18 @@
         },
         "showThresholdLabels": true,
         "showThresholdMarkers": true,
-        "text": {
-          "titleSize": 14,
-          "valueSize": 14
-        }
+        "text": {}
       },
       "pluginVersion": "8.1.8",
       "targets": [
         {
           "alias": "Temperature",
           "groupBy": [],
-          "measurement": "TemperatureSensor",
+          "measurement": "TemperatureSensor_5m",
           "orderByTime": "ASC",
           "policy": "default",
-          "refId": "A",
-          "resultFormat": "time_series",
+          "refId": "Query",
+          "resultFormat": "table",
           "select": [
             [
               {
@@ -1159,34 +1061,41 @@
                   "temperature3"
                 ],
                 "type": "field"
+              },
+              {
+                "params": [],
+                "type": "last"
+              },
+              {
+                "params": [
+                  "Temperature"
+                ],
+                "type": "alias"
               }
-            ]
-          ],
-          "tags": []
-        },
-        {
-          "alias": "Humidity",
-          "groupBy": [],
-          "hide": false,
-          "measurement": "TemperatureSensor",
-          "orderByTime": "ASC",
-          "policy": "default",
-          "refId": "B",
-          "resultFormat": "time_series",
-          "select": [
+            ],
             [
               {
                 "params": [
                   "humidity3"
                 ],
                 "type": "field"
+              },
+              {
+                "params": [],
+                "type": "last"
+              },
+              {
+                "params": [
+                  "Humidity"
+                ],
+                "type": "alias"
               }
             ]
           ],
           "tags": []
         }
       ],
-      "title": "Sensor 3 - New",
+      "title": "New",
       "type": "gauge"
     },
     {
@@ -1324,9 +1233,9 @@
         "h": 5,
         "w": 6,
         "x": 18,
-        "y": 15
+        "y": 16
       },
-      "id": 123137,
+      "id": 123142,
       "options": {
         "reduceOptions": {
           "calcs": [
@@ -1337,21 +1246,18 @@
         },
         "showThresholdLabels": true,
         "showThresholdMarkers": true,
-        "text": {
-          "titleSize": 14,
-          "valueSize": 14
-        }
+        "text": {}
       },
       "pluginVersion": "8.1.8",
       "targets": [
         {
           "alias": "Temperature",
           "groupBy": [],
-          "measurement": "TemperatureSensor",
+          "measurement": "TemperatureSensor_5m",
           "orderByTime": "ASC",
           "policy": "default",
-          "refId": "A",
-          "resultFormat": "time_series",
+          "refId": "Query",
+          "resultFormat": "table",
           "select": [
             [
               {
@@ -1359,35 +1265,206 @@
                   "temperature4"
                 ],
                 "type": "field"
+              },
+              {
+                "params": [],
+                "type": "last"
+              },
+              {
+                "params": [
+                  "Temperature"
+                ],
+                "type": "alias"
               }
-            ]
-          ],
-          "tags": []
-        },
-        {
-          "alias": "Humidity",
-          "groupBy": [],
-          "hide": false,
-          "measurement": "TemperatureSensor",
-          "orderByTime": "ASC",
-          "policy": "default",
-          "refId": "B",
-          "resultFormat": "time_series",
-          "select": [
+            ],
             [
               {
                 "params": [
                   "humidity4"
                 ],
                 "type": "field"
+              },
+              {
+                "params": [],
+                "type": "last"
+              },
+              {
+                "params": [
+                  "Humidity"
+                ],
+                "type": "alias"
               }
             ]
           ],
           "tags": []
         }
       ],
-      "title": "Sensor 4 - Room",
+      "title": "Room",
       "type": "gauge"
+    },
+    {
+      "datasource": null,
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "max": 1025,
+          "min": 975,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "light-blue",
+                "value": null
+              },
+              {
+                "color": "light-green",
+                "value": 975
+              },
+              {
+                "color": "semi-dark-green",
+                "value": 1000
+              },
+              {
+                "color": "super-light-orange",
+                "value": 1025
+              },
+              {
+                "color": "semi-dark-orange",
+                "value": 1050
+              }
+            ]
+          },
+          "unit": "pressurehpa"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 21
+      },
+      "id": 123146,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "text": {},
+        "textMode": "auto"
+      },
+      "pluginVersion": "8.1.8",
+      "targets": [
+        {
+          "groupBy": [
+            {
+              "params": [
+                "$__interval"
+              ],
+              "type": "time"
+            },
+            {
+              "params": [
+                "previous"
+              ],
+              "type": "fill"
+            }
+          ],
+          "measurement": "TemperatureSensor_5m",
+          "orderByTime": "ASC",
+          "policy": "default",
+          "refId": "Query",
+          "resultFormat": "table",
+          "select": [
+            [
+              {
+                "params": [
+                  "pressure1"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "last"
+              },
+              {
+                "params": [
+                  "Small"
+                ],
+                "type": "alias"
+              }
+            ],
+            [
+              {
+                "params": [
+                  "pressure2"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "last"
+              },
+              {
+                "params": [
+                  "Large"
+                ],
+                "type": "alias"
+              }
+            ],
+            [
+              {
+                "params": [
+                  "pressure3"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "last"
+              },
+              {
+                "params": [
+                  "New"
+                ],
+                "type": "alias"
+              }
+            ],
+            [
+              {
+                "params": [
+                  "pressure4"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "last"
+              },
+              {
+                "params": [
+                  "Room"
+                ],
+                "type": "alias"
+              }
+            ]
+          ],
+          "tags": []
+        }
+      ],
+      "title": "Pressure",
+      "type": "stat"
     },
     {
       "datasource": null,
@@ -1445,13 +1522,14 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "cpu"
+              "options": "CPU"
             },
             "properties": [
               {
                 "id": "color",
                 "value": {
-                  "mode": "continuous-BlYlRd"
+                  "fixedColor": "blue",
+                  "mode": "fixed"
                 }
               },
               {
@@ -1467,13 +1545,14 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "temp"
+              "options": "Temp"
             },
             "properties": [
               {
                 "id": "color",
                 "value": {
-                  "mode": "continuous-GrYlRd"
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
                 }
               },
               {
@@ -1508,7 +1587,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "ram"
+              "options": "RAM"
             },
             "properties": [
               {
@@ -1525,6 +1604,10 @@
               {
                 "id": "unit",
                 "value": "%"
+              },
+              {
+                "id": "displayName",
+                "value": "RAM Usage"
               }
             ]
           },
@@ -1568,7 +1651,7 @@
         "h": 5,
         "w": 24,
         "x": 0,
-        "y": 20
+        "y": 25
       },
       "id": 123139,
       "options": {
@@ -1600,11 +1683,11 @@
               "type": "fill"
             }
           ],
-          "measurement": "TemperatureSensor",
+          "measurement": "TemperatureSensor_5m",
           "orderByTime": "ASC",
           "policy": "default",
-          "refId": "CPU-Usage",
-          "resultFormat": "time_series",
+          "refId": "Query",
+          "resultFormat": "table",
           "select": [
             [
               {
@@ -1616,72 +1699,14 @@
               {
                 "params": [],
                 "type": "mean"
-              }
-            ]
-          ],
-          "tags": []
-        },
-        {
-          "alias": "temp",
-          "groupBy": [
-            {
-              "params": [
-                "$__interval"
-              ],
-              "type": "time"
-            },
-            {
-              "params": [
-                "null"
-              ],
-              "type": "fill"
-            }
-          ],
-          "hide": false,
-          "measurement": "TemperatureSensor",
-          "orderByTime": "ASC",
-          "policy": "default",
-          "refId": "CPU-Temp",
-          "resultFormat": "time_series",
-          "select": [
-            [
-              {
-                "params": [
-                  "cpu_temp"
-                ],
-                "type": "field"
               },
               {
-                "params": [],
-                "type": "mean"
+                "params": [
+                  "CPU"
+                ],
+                "type": "alias"
               }
-            ]
-          ],
-          "tags": []
-        },
-        {
-          "alias": "ram",
-          "groupBy": [
-            {
-              "params": [
-                "$__interval"
-              ],
-              "type": "time"
-            },
-            {
-              "params": [
-                "null"
-              ],
-              "type": "fill"
-            }
-          ],
-          "hide": false,
-          "measurement": "TemperatureSensor",
-          "orderByTime": "ASC",
-          "policy": "default",
-          "refId": "RAM-Usage",
-          "resultFormat": "time_series",
-          "select": [
+            ],
             [
               {
                 "params": [
@@ -1692,34 +1717,32 @@
               {
                 "params": [],
                 "type": "mean"
+              },
+              {
+                "params": [
+                  "RAM"
+                ],
+                "type": "alias"
               }
-            ]
-          ],
-          "tags": []
-        },
-        {
-          "alias": "VCC",
-          "groupBy": [
-            {
-              "params": [
-                "$__interval"
-              ],
-              "type": "time"
-            },
-            {
-              "params": [
-                "null"
-              ],
-              "type": "fill"
-            }
-          ],
-          "hide": false,
-          "measurement": "TemperatureSensor",
-          "orderByTime": "ASC",
-          "policy": "default",
-          "refId": "A",
-          "resultFormat": "time_series",
-          "select": [
+            ],
+            [
+              {
+                "params": [
+                  "cpu_temp"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "mean"
+              },
+              {
+                "params": [
+                  "Temp"
+                ],
+                "type": "alias"
+              }
+            ],
             [
               {
                 "params": [
@@ -1730,6 +1753,12 @@
               {
                 "params": [],
                 "type": "mean"
+              },
+              {
+                "params": [
+                  "VCC"
+                ],
+                "type": "alias"
               }
             ]
           ],
@@ -1748,7 +1777,7 @@
     "list": []
   },
   "time": {
-    "from": "now-1h",
+    "from": "now-7d",
     "to": "now"
   },
   "timepicker": {
@@ -1779,7 +1808,7 @@
     "type": "timepicker"
   },
   "timezone": "browser",
-  "title": "Grow Monitor",
+  "title": "Monitor",
   "uid": "IdY2fZZRk",
-  "version": 16
+  "version": 45
 }
