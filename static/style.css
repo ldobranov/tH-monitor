@@ -1,0 +1,178 @@
+/* tH-Monitor WiFi Manager – Web UI Stylesheet */
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    max-width: 640px;
+    margin: 20px auto;
+    padding: 16px;
+    background-color: #f0f0f0;
+}
+
+.container {
+    background: white;
+    padding: 24px;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+h1 {
+    color: #333;
+    text-align: center;
+    margin-top: 0;
+}
+
+/* ── Status banners ──────────────────────────────────────── */
+
+.status {
+    padding: 15px;
+    margin: 18px 0;
+    border-radius: 5px;
+    text-align: center;
+}
+
+.status.success {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.status.error {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+.status.warning {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+.status.info {
+    background-color: #d1ecf1;
+    color: #0c5460;
+}
+
+/* ── Current status bar ──────────────────────────────────── */
+
+.current-status {
+    margin-bottom: 18px;
+    padding: 12px;
+    background: #e3f2fd;
+    border-radius: 5px;
+    line-height: 1.6;
+}
+
+.mode-indicator {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-weight: bold;
+    font-size: 12px;
+}
+
+.mode-ap      { background-color: #ff9800; color: white; }
+.mode-client  { background-color: #4CAF50; color: white; }
+.mode-unknown { background-color: #9e9e9e; color: white; }
+
+/* ── Section panels ──────────────────────────────────────── */
+
+.panel {
+    margin-bottom: 18px;
+    padding: 14px;
+    border-radius: 6px;
+    background: #f8f9fa;
+}
+
+.panel h2 {
+    margin: 0 0 10px 0;
+    font-size: 18px;
+}
+
+/* ── Network list ────────────────────────────────────────── */
+
+.network-list {
+    list-style: none;
+    margin: 10px 0 0 0;
+    padding: 0;
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    background: #fff;
+}
+
+.network-list li {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border-bottom: 1px solid #eee;
+    align-items: center;
+}
+
+.network-list li:last-child {
+    border-bottom: none;
+}
+
+.network-meta {
+    font-size: 12px;
+    color: #666;
+}
+
+/* ── Form elements ───────────────────────────────────────── */
+
+label {
+    display: block;
+    margin: 15px 0 5px;
+    font-weight: bold;
+}
+
+input[type="text"],
+input[type="password"] {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+}
+
+/* ── Buttons ─────────────────────────────────────────────── */
+
+button {
+    width: 100%;
+    padding: 14px;
+    margin-top: 14px;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+button.primary         { background-color: #4CAF50; }
+button.primary:hover   { background-color: #45a049; }
+
+button.secondary       { background-color: #1976d2; }
+button.secondary:hover { background-color: #1565c0; }
+
+button.warning         { background-color: #ef6c00; }
+button.warning:hover   { background-color: #e65100; }
+
+button.danger          { background-color: #d32f2f; }
+button.danger:hover    { background-color: #c62828; }
+
+.small-button {
+    width: auto;
+    margin-top: 0;
+    padding: 8px 12px;
+    font-size: 13px;
+}
+
+/* ── Hints / helper text ─────────────────────────────────── */
+
+.hint {
+    font-size: 13px;
+    color: #555;
+    margin-top: 8px;
+}
