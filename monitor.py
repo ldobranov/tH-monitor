@@ -1,6 +1,5 @@
 #! /usr/bin/env python3
 import logging
-import drivers
 import datetime
 import os
 import time
@@ -9,6 +8,7 @@ import signal
 import sys
 import board # type: ignore
 import adafruit_ahtx0 # type: ignore
+import adafruit_bmp280 # type: ignore
 from influxdb import client as influxdb # type: ignore
 import threading
 import smbus2 # type: ignore
@@ -16,7 +16,15 @@ import smbus2 # type: ignore
 #logmode = logging.DEBUG
 logmode = logging.WARNING
 
-logging.basicConfig(filename="/home/raspberry/tH-monitor/log_monitor.txt", level=logmode)
+# Try to log to file; fall back to stderr if the file is not writable
+try:
+    logging.basicConfig(
+        filename="/home/raspberry/tH-monitor/log_monitor.txt",
+        level=logmode,
+    )
+except (PermissionError, OSError):
+    logging.basicConfig(level=logmode)
+    logging.warning("Could not open log file – logging to stderr instead")
 
 # Configuration
 BUTTON_PIN = 18  # GPIO pin for button
@@ -35,6 +43,10 @@ SENSOR_CHANNELS = [7, 6, 5, 4]  # All sensors on channel 6 for now (same sensor)
 SENSOR_I2C_ADDRESSES = [0x38, 0x38, 0x38, 0x38]  # 4 sensors, same address by default
 # If you have different addresses, e.g., [0x38, 0x39, 0x3C, 0x3D]
 
+# BMP280 Pressure Sensor I2C addresses (all same address, different multiplexer channels)
+# Default BMP280 address is 0x77 (SDO pin high) or 0x76 (SDO pin low)
+BMP280_I2C_ADDRESSES = [0x77, 0x77, 0x77, 0x77]  # 4 sensors, same address by default
+
 # InfluxDB Connection Details
 influxHost = 'localhost'
 influxUser = 'admin'
@@ -51,22 +63,19 @@ old_time = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(min
 
 # Thread-safe sensor data storage
 sensor_lock = threading.Lock()
-# Store sensor data: list of dicts with 'temp' and 'humidity'
-# We have 2 sensors working (on channel 6), but keep array size 4 for compatibility
+# Store sensor data: list of dicts with 'temp', 'humidity', and 'pressure'
+# Each entry corresponds to one BMP280+AHT20 module on a separate multiplexer channel
 sensor_data = [
-    {'temp': None, 'humidity': None},  # Sensor 1 (channel 6)
-    {'temp': None, 'humidity': None},  # Sensor 2 (channel 6 - same physical sensor)
-    {'temp': None, 'humidity': None},  # Sensor 3 (not connected)
-    {'temp': None, 'humidity': None}   # Sensor 4 (not connected)
+    {'temp': None, 'humidity': None, 'pressure': None},  # Sensor 1 (channel 7)
+    {'temp': None, 'humidity': None, 'pressure': None},  # Sensor 2 (channel 6)
+    {'temp': None, 'humidity': None, 'pressure': None},  # Sensor 3 (channel 5)
+    {'temp': None, 'humidity': None, 'pressure': None}   # Sensor 4 (channel 4)
 ]
 
 # Display modes - expanded for 4 sensors
-# New layout: humidity pairs, temp pairs, temp-humidity pairs, clock
-DISPLAY_MODES = ['humidity_pairs', 'temp_pairs', 'temp_humidity_pairs1', 'temp_humidity_pairs2', 'clock']
+# New layout: humidity pairs, temp pairs, temp-humidity pairs, pressure, clock
+DISPLAY_MODES = ['humidity_pairs', 'temp_pairs', 'temp_humidity_pairs1', 'temp_humidity_pairs2', 'pressure_display', 'clock']
 current_mode = 0  # Start with humidity display
-
-# Lock for thread-safe display updates
-display_lock = threading.Lock()
 
 # Flag for graceful shutdown
 running = True
@@ -78,6 +87,10 @@ influx_client_lock = threading.Lock()
 
 # AHT20 sensor objects
 aht_sensors = [None, None, None, None]
+
+# BMP280 sensor objects (one per module, co-located with each AHT20)
+bmp_sensors = [None, None, None, None]
+bmp_initialized = [False, False, False, False]
 
 # Track which sensors have been initialized (to avoid repeated init attempts)
 sensor_initialized = [False, False, False, False]
@@ -111,12 +124,9 @@ def select_tca_channel(channel, retries=5):
             return False
     return False  # Silently fail after retries to avoid log spam
 
-try:
-    display = drivers.Lcd()
-    logging.warning(datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + "  -- LCD started")
-except Exception as e:
-    logging.error(datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + f"  -- LCD error: {e}")
-    display = None
+# LCD access via the centralized lcd_service (avoids I2C contention with wifi_manager)
+from lcd_client import LcdClient
+lcd = LcdClient('monitor', default_priority=50)
 
 def initialize_aht_sensors():
     """Initialize AHT20 sensors on different TCA9548A channels"""
@@ -181,46 +191,97 @@ def initialize_aht_sensors():
                     pass
             aht_sensors[i] = None
 
+def initialize_bmp280():
+    """Initialize BMP280 pressure sensors (one per multiplexer channel, co-located with AHT20)"""
+    global bmp_sensors, bmp_initialized
+
+    for i, addr in enumerate(BMP280_I2C_ADDRESSES):
+        channel = SENSOR_CHANNELS[i] if i < len(SENSOR_CHANNELS) else i
+
+        for attempt in range(5):
+            i2c = None
+            try:
+                # Select the correct TCA9548A channel
+                if not select_tca_channel(channel, retries=3):
+                    logging.warning(f"BMP280 sensor {i+1} failed to select channel {channel}")
+                    break
+
+                time.sleep(0.2)
+
+                # Create BMP280 sensor object
+                i2c = board.I2C()
+                bmp_sensors[i] = adafruit_bmp280.Adafruit_BMP280_I2C(i2c, address=addr)
+
+                # Quick test read to verify sensor is present
+                _ = bmp_sensors[i].pressure
+
+                bmp_initialized[i] = True
+                logging.warning(f"BMP280 sensor {i+1} initialized on channel {channel} at address 0x{addr:02X}")
+                break
+            except Exception as e:
+                logging.warning(f"BMP280 sensor {i+1} initialization attempt {attempt+1} failed on channel {channel}: {e}")
+                if i2c is not None:
+                    try:
+                        i2c.deinit()
+                    except Exception:
+                        pass
+                bmp_sensors[i] = None
+                time.sleep(0.2)
+
+        if not bmp_initialized[i]:
+            logging.error(f"BMP280 sensor {i+1} NOT found on channel {channel} at address 0x{addr:02X}")
+            bmp_sensors[i] = None
+            bmp_initialized[i] = False
+
 def recheck_sensors():
     """Re-check for sensors that weren't found during initial initialization (hot-plug support)"""
-    global aht_sensors, sensor_initialized
-    
-    logging.info("Checking for newly connected sensors...")
-    
-    for i, addr in enumerate(SENSOR_I2C_ADDRESSES):
-        # Skip if sensor already initialized and working
-        if sensor_initialized[i] and aht_sensors[i] is not None:
-            continue
-        
+    global aht_sensors, sensor_initialized, bmp_sensors, bmp_initialized
+
+    for i in range(len(SENSOR_I2C_ADDRESSES)):
         channel = SENSOR_CHANNELS[i] if i < len(SENSOR_CHANNELS) else i
-        
-        try:
-            # Select the channel on TCA9548A
-            if not select_tca_channel(channel, retries=3):
-                logging.debug(f"Hot-plug: AHT20 sensor {i+1} failed to select channel {channel}")
-                continue
-            
-            time.sleep(0.2)
-            
-            # Create AHT20 sensor object
-            i2c = board.I2C()
-            aht_sensors[i] = adafruit_ahtx0.AHTx0(i2c, address=addr)
-            
-            # Quick test read to verify sensor is present
-            _ = aht_sensors[i].temperature
-            
-            sensor_initialized[i] = True
-            logging.warning(f"NEW AHT20 sensor {i+1} detected on channel {channel} at address 0x{addr:02X}")
-            
-        except Exception as e:
-            # Sensor not found on this channel - will try again later
-            logging.debug(f"Hot-plug check sensor {i+1}: {e}")
-            aht_sensors[i] = None
-            sensor_initialized[i] = False
+
+        # Re-check AHT20
+        if not (sensor_initialized[i] and aht_sensors[i] is not None):
+            addr = SENSOR_I2C_ADDRESSES[i]
+            try:
+                if not select_tca_channel(channel, retries=3):
+                    logging.debug(f"Hot-plug: AHT20 sensor {i+1} failed to select channel {channel}")
+                else:
+                    time.sleep(0.2)
+                    i2c = board.I2C()
+                    aht_sensors[i] = adafruit_ahtx0.AHTx0(i2c, address=addr)
+                    _ = aht_sensors[i].temperature
+                    sensor_initialized[i] = True
+                    logging.warning(f"NEW AHT20 sensor {i+1} detected on channel {channel} at address 0x{addr:02X}")
+            except Exception as e:
+                logging.debug(f"Hot-plug check AHT20 sensor {i+1}: {e}")
+                aht_sensors[i] = None
+                sensor_initialized[i] = False
+
+        # Re-check BMP280
+        if not (bmp_initialized[i] and bmp_sensors[i] is not None):
+            addr = BMP280_I2C_ADDRESSES[i]
+            try:
+                if not select_tca_channel(channel, retries=3):
+                    logging.debug(f"Hot-plug: BMP280 sensor {i+1} failed to select channel {channel}")
+                else:
+                    time.sleep(0.2)
+                    i2c = board.I2C()
+                    bmp_sensors[i] = adafruit_bmp280.Adafruit_BMP280_I2C(i2c, address=addr)
+                    _ = bmp_sensors[i].pressure
+                    bmp_initialized[i] = True
+                    logging.warning(f"NEW BMP280 sensor {i+1} detected on channel {channel} at address 0x{addr:02X}")
+            except Exception as e:
+                logging.debug(f"Hot-plug check BMP280 sensor {i+1}: {e}")
+                bmp_sensors[i] = None
+                bmp_initialized[i] = False
 
 # Initialize sensors (run twice for better detection on boot)
 initialize_aht_sensors()
 recheck_sensors()
+
+# Initialize BMP280 pressure sensor
+initialize_bmp280()
 
 # Initialize pigpio for button with callback
 try:
@@ -417,113 +478,102 @@ def get_voltages():
     
     return voltages
 
+# Cache the last content sent to lcd_service so we avoid spamming the socket
+# with duplicate writes (important for sensor modes that barely change).
+_last_lcd_content: tuple[str, str] = ('', '')
+
+
 def update_display():
-    """Update LCD based on current display mode - thread safe"""
-    global display
-    if display is None:
-        return
-    
+    """Compute the two LCD lines for the current display mode and send to lcd_service.
+
+    Only sends to the service when the content has changed, which avoids
+    flooding the socket and also lets the clock update at sub-second precision
+    (the main loop calls this at 0.1 s intervals).
+    """
+    global _last_lcd_content
+
     # Get current sensor values in a thread-safe manner
     with sensor_lock:
         local_sensor_data = [s.copy() for s in sensor_data]
-    
-    with display_lock:
-        try:
-            if DISPLAY_MODES[current_mode] == 'humidity_pairs':
-                # Show humidity pairs: H1: H2 on line 1, H3: H4 on line 2
-                h1 = local_sensor_data[0]['humidity']
-                h2 = local_sensor_data[1]['humidity']
-                h3 = local_sensor_data[2]['humidity']
-                h4 = local_sensor_data[3]['humidity']
 
-                h1_str = "{:3d}".format(int(h1)) if h1 is not None else " --"
-                h2_str = "{:3d}".format(int(h2)) if h2 is not None else " --"
-                h3_str = "{:3d}".format(int(h3)) if h3 is not None else " --"
-                h4_str = "{:3d}".format(int(h4)) if h4 is not None else " --"
+    line1 = ''
+    line2 = ''
 
-                # FIX #12: Clamp display strings to 16 chars
-                line1 = "H1:{}%  H2:{}%".format(h1_str, h2_str)[:16]
-                line2 = "H3:{}%  H4:{}%".format(h3_str, h4_str)[:16]
-                display.lcd_display_string(line1, 1)
-                display.lcd_display_string(line2, 2)
-                
-            elif DISPLAY_MODES[current_mode] == 'temp_pairs':
-                # Show temperature pairs: T1: T2 on line 1, T3: T4 on line 2
-                t1 = local_sensor_data[0]['temp']
-                t2 = local_sensor_data[1]['temp']
-                t3 = local_sensor_data[2]['temp']
-                t4 = local_sensor_data[3]['temp']
+    try:
+        if DISPLAY_MODES[current_mode] == 'humidity_pairs':
+            h1 = local_sensor_data[0]['humidity']
+            h2 = local_sensor_data[1]['humidity']
+            h3 = local_sensor_data[2]['humidity']
+            h4 = local_sensor_data[3]['humidity']
+            h1_str = "{:3d}".format(int(h1)) if h1 is not None else " --"
+            h2_str = "{:3d}".format(int(h2)) if h2 is not None else " --"
+            h3_str = "{:3d}".format(int(h3)) if h3 is not None else " --"
+            h4_str = "{:3d}".format(int(h4)) if h4 is not None else " --"
+            line1 = "H1:{}%  H2:{}%".format(h1_str, h2_str)[:16]
+            line2 = "H3:{}%  H4:{}%".format(h3_str, h4_str)[:16]
 
-                t1_str = "{:.1f}".format(t1) if t1 is not None else "  --"
-                t2_str = "{:.1f}".format(t2) if t2 is not None else "  --"
-                t3_str = "{:.1f}".format(t3) if t3 is not None else "  --"
-                t4_str = "{:.1f}".format(t4) if t4 is not None else "  --"
+        elif DISPLAY_MODES[current_mode] == 'temp_pairs':
+            t1 = local_sensor_data[0]['temp']
+            t2 = local_sensor_data[1]['temp']
+            t3 = local_sensor_data[2]['temp']
+            t4 = local_sensor_data[3]['temp']
+            t1_str = "{:.1f}".format(t1) if t1 is not None else "  --"
+            t2_str = "{:.1f}".format(t2) if t2 is not None else "  --"
+            t3_str = "{:.1f}".format(t3) if t3 is not None else "  --"
+            t4_str = "{:.1f}".format(t4) if t4 is not None else "  --"
+            line1 = "T1:{}  T2:{}".format(t1_str, t2_str)[:16]
+            line2 = "T3:{}  T4:{}".format(t3_str, t4_str)[:16]
 
-                # FIX #12: Clamp display strings to 16 chars
-                line1 = "T1:{}  T2:{}".format(t1_str, t2_str)[:16]
-                line2 = "T3:{}  T4:{}".format(t3_str, t4_str)[:16]
-                display.lcd_display_string(line1, 1)
-                display.lcd_display_string(line2, 2)
-                
-            elif DISPLAY_MODES[current_mode] == 'temp_humidity_pairs1':
-                # Show T1:H1 and T2:H2
-                t1 = local_sensor_data[0]['temp']
-                h1 = local_sensor_data[0]['humidity']
-                t2 = local_sensor_data[1]['temp']
-                h2 = local_sensor_data[1]['humidity']
+        elif DISPLAY_MODES[current_mode] == 'temp_humidity_pairs1':
+            t1 = local_sensor_data[0]['temp']
+            h1 = local_sensor_data[0]['humidity']
+            t2 = local_sensor_data[1]['temp']
+            h2 = local_sensor_data[1]['humidity']
+            t1_str = "{:.1f}".format(t1) if t1 is not None else "  --"
+            h1_str = "{:3d}".format(int(h1)) if h1 is not None else " --"
+            t2_str = "{:.1f}".format(t2) if t2 is not None else "  --"
+            h2_str = "{:3d}".format(int(h2)) if h2 is not None else " --"
+            line1 = "T1:{}C H1:{}%".format(t1_str, h1_str)[:16]
+            line2 = "T2:{}C H2:{}%".format(t2_str, h2_str)[:16]
 
-                t1_str = "{:.1f}".format(t1) if t1 is not None else "  --"
-                h1_str = "{:3d}".format(int(h1)) if h1 is not None else " --"
-                t2_str = "{:.1f}".format(t2) if t2 is not None else "  --"
-                h2_str = "{:3d}".format(int(h2)) if h2 is not None else " --"
+        elif DISPLAY_MODES[current_mode] == 'temp_humidity_pairs2':
+            t3 = local_sensor_data[2]['temp']
+            h3 = local_sensor_data[2]['humidity']
+            t4 = local_sensor_data[3]['temp']
+            h4 = local_sensor_data[3]['humidity']
+            t3_str = "{:.1f}".format(t3) if t3 is not None else "  --"
+            h3_str = "{:3d}".format(int(h3)) if h3 is not None else " --"
+            t4_str = "{:.1f}".format(t4) if t4 is not None else "  --"
+            h4_str = "{:3d}".format(int(h4)) if h4 is not None else " --"
+            line1 = "T3:{}C H3:{}%".format(t3_str, h3_str)[:16]
+            line2 = "T4:{}C H4:{}%".format(t4_str, h4_str)[:16]
 
-                # FIX #12: Clamp display strings to 16 chars
-                line1 = "T1:{}C H1:{}%".format(t1_str, h1_str)[:16]
-                line2 = "T2:{}C H2:{}%".format(t2_str, h2_str)[:16]
-                display.lcd_display_string(line1, 1)
-                display.lcd_display_string(line2, 2)
-                
-            elif DISPLAY_MODES[current_mode] == 'temp_humidity_pairs2':
-                # Show T3:H3 and T4:H4
-                t3 = local_sensor_data[2]['temp']
-                h3 = local_sensor_data[2]['humidity']
-                t4 = local_sensor_data[3]['temp']
-                h4 = local_sensor_data[3]['humidity']
+        elif DISPLAY_MODES[current_mode] == 'clock':
+            now = datetime.datetime.now()
+            line1 = "{:^16}".format(now.strftime('%H:%M:%S'))
+            line2 = "{:^16}".format(now.strftime('%d/%m/%Y'))
 
-                t3_str = "{:.1f}".format(t3) if t3 is not None else "  --"
-                h3_str = "{:3d}".format(int(h3)) if h3 is not None else " --"
-                t4_str = "{:.1f}".format(t4) if t4 is not None else "  --"
-                h4_str = "{:3d}".format(int(h4)) if h4 is not None else " --"
+        elif DISPLAY_MODES[current_mode] == 'pressure_display':
+            pressures = [local_sensor_data[i]['pressure'] for i in range(4)]
+            valid = [p for p in pressures if p is not None]
+            if valid:
+                avg_pressure = sum(valid) / len(valid)
+                line1 = "Pres({}/4 ok) ".format(len(valid))[:16]
+                line2 = " {:7.1f} hPa".format(avg_pressure)[:16]
+            else:
+                line1 = "  Pressure  "
+                line2 = "    -- hPa  "
 
-                # FIX #12: Clamp display strings to 16 chars
-                line1 = "T3:{}C H3:{}%".format(t3_str, h3_str)[:16]
-                line2 = "T4:{}C H4:{}%".format(t4_str, h4_str)[:16]
-                display.lcd_display_string(line1, 1)
-                display.lcd_display_string(line2, 2)
-                
-            elif DISPLAY_MODES[current_mode] == 'clock':
-                # Show clock
-                now = datetime.datetime.now()
-                time_str = now.strftime('%H:%M:%S')
-                date_str = now.strftime('%d/%m/%Y')
-                display.lcd_display_string("{:^16}".format(time_str), 1)
-                display.lcd_display_string("{:^16}".format(date_str), 2)
-                
-        except Exception as e:
-            logging.error(datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + "  -- Display update error: " + str(e))
-            # Try to reinitialize display on persistent I/O errors
-            error_str = str(e)
-            if ("Input/output error" in error_str or "Errno 5" in error_str or 
-                "Remote I/O error" in error_str or "Errno 121" in error_str):
-                # Always retry on I/O errors (no limit to keep LCD working)
-                lcd_reinit_count += 1
-                time.sleep(1)  # Wait before retry to let I2C bus settle
-                try:
-                    display = drivers.Lcd()
-                    logging.warning("LCD reinitialized after I/O error")
-                except Exception as reinit_error:
-                    logging.error("Failed to reinitialize LCD: " + str(reinit_error))
-                    display = None
+    except Exception as e:
+        logging.error(datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
+                      + "  -- Display update error: " + str(e))
+        return
+
+    # Only write to the LCD service when content has actually changed
+    new_content = (line1, line2)
+    if new_content != _last_lcd_content:
+        lcd.write(line1, line2)
+        _last_lcd_content = new_content
 
 def read_sensors():
     """Background thread to read AHT20 sensors continuously"""
@@ -561,6 +611,7 @@ def read_sensors():
                             sensor_data[i]['humidity'] = humidity
                         
                         logging.info(f"AHT20 sensor {i+1} (ch {channel}) read: {temperature:.1f}C, {humidity:.1f}%")
+                    
                     except Exception as e:
                         logging.debug(f"AHT20 sensor {i+1} error: {e}")
                         consecutive_errors[i] += 1
@@ -580,6 +631,22 @@ def read_sensors():
                     with sensor_lock:
                         sensor_data[i]['temp'] = None
                         sensor_data[i]['humidity'] = None
+            
+            # Read BMP280 pressure from each sensor (co-located with AHT20 on same channel)
+            for i, bmp in enumerate(bmp_sensors):
+                if bmp is not None and bmp_initialized[i]:
+                    try:
+                        channel = SENSOR_CHANNELS[i] if i < len(SENSOR_CHANNELS) else i
+                        if not select_tca_channel(channel):
+                            logging.debug(f"BMP280 sensor {i+1}: failed to select channel {channel}")
+                        else:
+                            time.sleep(0.05)
+                            pressure = bmp.pressure
+                            with sensor_lock:
+                                sensor_data[i]['pressure'] = pressure
+                            logging.info(f"BMP280 sensor {i+1} (ch {channel}) pressure: {pressure:.1f} hPa")
+                    except Exception as e:
+                        logging.debug(f"BMP280 sensor {i+1} error: {e}")
         except Exception as e:
             logging.error(f"Unexpected error in sensor read loop: {e}")
             time.sleep(1)  # Brief pause before retrying
@@ -623,6 +690,8 @@ def save_to_influxdb():
                 fields[f'temperature{i+1}'] = s['temp']
             if s['humidity'] is not None:
                 fields[f'humidity{i+1}'] = s['humidity']
+            if s['pressure'] is not None:
+                fields[f'pressure{i+1}'] = s['pressure']
         
         # Add system metrics: CPU usage, CPU temperature, RAM usage
         cpu_usage = get_cpu_usage()
@@ -662,18 +731,15 @@ def signal_handler(signum, frame):
     global running
     logging.info(datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + "  -- Shutting down...")
     running = False
-    
-    # Cleanup
-    if display is not None:
-        # FIX #8: Use except Exception instead of bare except
-        try:
-            display.lcd_display_string("Goodbye!", 1)
-            display.lcd_display_string("{:^16}".format("Shutting down"), 2)
-            time.sleep(1)
-            display.lcd_clear()
-        except Exception:
-            pass
-    
+
+    # Send goodbye message to LCD service then release slot
+    try:
+        lcd.write('Goodbye!', '{:^16}'.format('Shutting down'))
+        time.sleep(1)
+        lcd.clear()
+    except Exception:
+        pass
+
     # FIX #7: pi is always defined (initialized to None before try block)
     if pi is not None:
         try:
@@ -694,9 +760,12 @@ def signal_handler(signum, frame):
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
-# Track last display update to avoid flickering
+# Track last display update
+# Use a short interval (0.1 s) so the clock mode updates within 100 ms of
+# each second boundary.  update_display() deduplicates writes to the socket
+# so this doesn't cause per-tick I/O for stable sensor readings.
 last_display_update = time.time()
-display_update_interval = 1  # Update display every 1 second
+display_update_interval = 0.1
 
 # Initial display update
 update_display()
@@ -730,5 +799,5 @@ while running:
     except Exception as e:
         logging.error(datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + "  -- Error in data saving loop: " + str(e))
 
-    # Shorter sleep for more responsive display updates
-    time.sleep(0.5)
+    # Short sleep – 0.1 s keeps the clock accurate while still being light.
+    time.sleep(0.1)
